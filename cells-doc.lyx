@@ -357,6 +357,15 @@ Here we define the slot num as we would do within a standard class declaration.
  ...) construct.
  This is necessary to let cells do some optimizations like avoiding to remember
  dependencies on slots that will never change.
+ Slots initialized with c-in are usually called 
+\begin_inset Quotes eld
+\end_inset 
+
+input cells
+\begin_inset Quotes erd
+\end_inset 
+
+.
 \layout LyX-Code
 
 (square-num :accessor square-num 
@@ -380,6 +389,15 @@ To calculate the value of square-num, evaluate the expression <expr>
  (c? ...) automatically tracks any dependency, in this case the dependency
  on the value of num: when num changes, (* (num self) (num self)) will be
  re-evaluated.
+ Slots initialized with c? are called 
+\begin_inset Quotes eld
+\end_inset 
+
+ruled cells
+\begin_inset Quotes erd
+\end_inset 
+
+.
 \layout LyX-Code
 
 (let ((h (make-instance 'hello-cells)))
@@ -1026,6 +1044,226 @@ str is "!olleH", rev-str is "Hello!"
 \layout LyX-Code
 
 NIL
+\layout Standard
+
+The equality function must accept two values: the new value of the slot
+ and the old one.
+\layout Section
+
+Lazy cells
+\layout Standard
+
+Ruled cells are evaluated, as we have already seen, at instance creation
+ time and after dependent cells change.
+ However, you may want to 
+\emph on 
+not
+\emph default 
+ evaluate a ruled cell until it is really needed, i.e.
+ when the program asks for its value.
+ To achieve such a behavior, you can use lazy cells.
+ There are three types of them, depending on their laziness:
+\layout Enumerate
+
+:once-asked this will get evaluated/observed on initialization, but won't
+ be reevaluated immediately if dependencies change, rather only when read
+ by application code.
+\layout Enumerate
+
+:until-asked this does not get evaluated/observed until read by application
+ code, but then it becomes un-lazy, eagerly reevaluated as soon as any dependenc
+y changes (not waiting until asked).
+\layout Enumerate
+
+:always this isn't evaluated/observed until read, and not reevaluated until
+ read after a dependency changes.
+\layout Standard
+
+There are two ways in which a cell can be lazy: by not being evaluated immediate
+ly after its creation and by not responding to dependencies change.
+ In both cases, when the program asks for its value, the lazy cell is evaluated.
+ The first type embodies only the second way, the second type only the first
+ way and the third type is lazy in both ways.
+ The following example shows the initialization phase lazy cells:
+\layout LyX-Code
+
+(defmodel lazy-test ()
+\layout LyX-Code
+
+  ((lazy-1 :accessor lazy-1 :initform (c-formula (:lazy :once-asked)
+\layout LyX-Code
+
+                                        (append (val self) (list '!!))))
+\layout LyX-Code
+
+   (lazy-2 :accessor lazy-2 :initform (c_? (val self)))
+\layout LyX-Code
+
+   (lazy-3 :accessor lazy-3 :initform (c?_ (reverse (val self))))
+\layout LyX-Code
+
+   (val :accessor val :initarg :val :initform (c-in nil))))
+\layout LyX-Code
+
+\layout LyX-Code
+
+(defobserver lazy-1 ()
+\layout LyX-Code
+
+  (format t "evaluating lazy-1!~%"))
+\layout LyX-Code
+
+\layout LyX-Code
+
+(defobserver lazy-2 ()
+\layout LyX-Code
+
+  (format t "evaluating lazy-2!~%"))
+\layout LyX-Code
+
+\layout LyX-Code
+
+(defobserver lazy-3 ()
+\layout LyX-Code
+
+  (format t "evaluating lazy-3!~%"))
+\layout LyX-Code
+
+\layout LyX-Code
+
+(defun print-lazies (l)
+\layout LyX-Code
+
+  (format t "Printing all the values:~%")
+\layout LyX-Code
+
+  (format t "lazy-3: ~a~%" (lazy-3 l))
+\layout LyX-Code
+
+  (format t "lazy-2: ~a~%" (lazy-2 l))
+\layout LyX-Code
+
+  (format t "lazy-1: ~a~%" (lazy-1 l)))
+\layout LyX-Code
+
+\layout LyX-Code
+
+(defun try-lazies ()
+\layout LyX-Code
+
+  (let ((l (make-instance 'lazy-test :val (c-in '(Im very lazy!)))))
+\layout LyX-Code
+
+    (format t "Initialization finished~%")
+\layout LyX-Code
+
+    (print-lazies l)
+\layout LyX-Code
+
+    (format t "Changing val~%")
+\layout LyX-Code
+
+    (setf (val l) '(who will be evaluated?))
+\layout LyX-Code
+
+    (print-lazies l)))
+\layout Standard
+
+As usual, load it and run it:
+\layout LyX-Code
+
+> (load 
+\begin_inset Quotes eld
+\end_inset 
+
+hello-cells.lisp
+\begin_inset Quotes erd
+\end_inset 
+
+)
+\layout LyX-Code
+
+T
+\layout LyX-Code
+
+> (try-lazies)
+\layout LyX-Code
+
+evaluating lazy-1!
+\layout LyX-Code
+
+Initialization finished
+\layout LyX-Code
+
+Printing all the values:
+\layout LyX-Code
+
+evaluating lazy-3!
+\layout LyX-Code
+
+lazy-3: (LAZY! VERY IM)
+\layout LyX-Code
+
+evaluating lazy-2!
+\layout LyX-Code
+
+lazy-2: (IM VERY LAZY!)
+\layout LyX-Code
+
+lazy-1: (IM VERY LAZY! !!)
+\layout LyX-Code
+
+Changing val
+\layout LyX-Code
+
+evaluating lazy-2!
+\layout LyX-Code
+
+Printing all the values:
+\layout LyX-Code
+
+evaluating lazy-3!
+\layout LyX-Code
+
+lazy-3: (EVALUATED? BE WILL WHO)
+\layout LyX-Code
+
+lazy-2: (WHO WILL BE EVALUATED?)
+\layout LyX-Code
+
+evaluating lazy-1!
+\layout LyX-Code
+
+lazy-1: (WHO WILL BE EVALUATED? !!)
+\layout LyX-Code
+
+NIL
+\layout Standard
+
+As you can see from the code to declare a ruled cell to be lazy you just
+ need to use the three constructs (c-formula (:lazy :one-asked) ...), (c_?
+ ...) and (c?_ ...) for :once-asked, :until-asked and :always lazy cells, respectively.
+ lazy-1 is evaluated immediately, lazy-2 and lazy-3 only when they are needed
+ by format.
+ After setting (val l), on which all the lazy cells depend, lazy-2 is re-evaluat
+ed immediately because it is of type :until-asked, while lazy-1 becomes
+ lazy and lazy-3 remains lazy, so these two postpone evaluation until we
+ ask for their values in the call to format.
+\layout Standard
+
+As a side note, such short names may not be very easy to remember and to
+ read, but those constructs are so common that you'll find yourself using
+ them a lot, and you'll appreciate their conciseness.
+ If you still prefer long descriptive names, though, you can use the c-formula
+ construct instead of c?/c_?/c?_ and c-input instead of c-in (see the 
+\begin_inset Quotes eld
+\end_inset 
+
+Functions & macros reference
+\begin_inset Quotes erd
+\end_inset 
+
+ section).
 \layout Section
 
 Functions & macros reference
@@ -1121,6 +1359,8 @@ c-formula
 (Macro) Same as c?, but lets you specify extra options.
  For example, the option :inputp lets you build a cell that behaves like
  a cell initialized with both c? and c-in.
+ Another useful option is :lazy that lets you specify the laziness of the
+ cell: nil, t, :once-asked, :until-asked or :always.
 \layout List
 \labelwidthstring 00.00.0000
 
@@ -1319,6 +1559,8 @@ This tutorial just scratched the surface of cells.
  You can find more documentation about cells within the 'doc' directory
  in the source tarball or by looking at the source files within the directories
  'cells-test', 'tutorial' and 'Use Cases'.
+ A general overview of cells can be found in the file cells-manifesto.txt
+ in the source tarball.
  You can also ask questions about cells on the project's mailing list: 
 \begin_inset LatexCommand \htmlurl{http://common-lisp.net/cgi-bin/mailman/subscribe/cells-devel}
 
