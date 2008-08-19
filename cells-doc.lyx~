@@ -49,7 +49,7 @@ Cells is a Common Lisp library that extends the language, and in particular
  depends no more on the sequence of function/method calls, but on the data.
  Cells lets you specify the dependence beetwen different slots
 \begin_inset Foot
-collapsed false
+collapsed true
 
 \layout Standard
 
@@ -65,7 +65,7 @@ A slot is the Common Lisp equivalent of a class instance variable in other
 \emph on 
 relationship 
 \emph default 
-between the data, the burden of maintaining them true is handled automatically
+between the data, the burden of mantaining them true is handled automatically
  by cells.
  
 \layout Subsection
@@ -78,7 +78,7 @@ Cells may not be the panacea of programming, but it sure helps a lot in
  A particular set of applications where this is important are graphical
  applications
 \begin_inset Foot
-collapsed false
+collapsed true
 
 \layout Standard
 
@@ -90,8 +90,8 @@ See the cells-gtk project:
 
 \end_inset 
 
-, where you need to maintain consistency between what the user sees and
- the real values held by the program in its internal data structures.
+, where you need to mantain consistency between what the user sees and the
+ real values held by the program in its internal data structures.
  An example is the state of the 'Cut' menu entry in an editor: it is usually
  clickable when the user has selected a piece of text and not clickable
  in all the other cases.
@@ -319,17 +319,17 @@ must hold, and every time num changes, the expression (* (num self) (num
 The program line-by-line
 \layout Standard
 
-Lets now analyze the program.
+Lets now analize the program.
  The very first line uses the construct defmodel:
 \layout LyX-Code
 
 (defmodel hello-cells ()
 \layout Standard
 
-defmodel is very similar to defclass and everything valid in a defclass
- construct is valid within defmodel
+defmodel is very similar to defclass and everything valid in a declass construct
+ is valid within defmodel
 \begin_inset Foot
-collapsed false
+collapsed true
 
 \layout Standard
 
@@ -338,7 +338,7 @@ defmodel is a layer built on top of defclass
 
 .
  The main difference is that all the slots defined within it will be tracked
- by cells, except slots that are explicitly declared to be ignored by the
+ by cells, except slots that are explicetly declared to be ignored by the
  system by specifying :cell nil in the definition.
 \layout LyX-Code
 
@@ -346,7 +346,7 @@ defmodel is a layer built on top of defclass
 \layout Standard
 
 Here we define the slot num as we would do within a standard class declaration.
- The difference is in its initialization expression: instead of the number
+ The difference is in its initialization epxression: instead of the number
  0 we have (c-in 0).
  Why? (c-in <expr>) is a construct that tells cells that the value of num
  may be changed, so whenever it does change a re-evaluation of all the slots
@@ -473,10 +473,10 @@ give me all the successors of type my-type
 
 .
  To use these features your models must inherit from the model 'family'.
- Models that inherit from family have also a .value slot associated, which
+ Models that inherit from family have also a .value slot associated, wich
  you can access through the method (value self)
 \begin_inset Foot
-collapsed false
+collapsed true
 
 \layout Standard
 
@@ -692,7 +692,7 @@ The body of the function prints the value of the tree, and through the output
 Defining an observer
 \layout Standard
 
-Cells lets you define a function to execute immediately after a c-in slot
+Cells lets you define a function to execute immediatly after a c-in slot
  is modified.
  This function is called an 
 \begin_inset Quotes eld

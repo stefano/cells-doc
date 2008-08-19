@@ -1,7 +1,5 @@
 Cells tutorial
 
-Indice generale
-
 1 Introduction
     1.1 What's cells?
     1.2 How could it improve your programs?
@@ -25,7 +23,7 @@ Indice generale
 
 Cells is a Common Lisp library that extends the 
 language, and in particular its object system, to let 
-you write constraint-driven programs. What does this 
+you write dataflow-driven programs. What does this 
 mean? This means that the flow of control of the 
 program depends no more on the sequence of 
 function/method calls, but on the data. Cells lets you 
@@ -34,10 +32,10 @@ instance variable in other languages
  in a family of classes. Once these constraints have 
 been registered, the cells system will take care of 
 them, and will recalculate a value when some data on 
-wich it depends has changed. As a consequence, the 
-programmer has just to tell the system the relationship 
-beetwen the data, the burden of mantaining them true is 
-handled automatically by cells. 
+which it depends has changed. As a consequence, the 
+programmer just has to tell the system the relationship 
+between the data, the burden of maintaining them true 
+is handled automatically by cells. 
 
 1.2 How could it improve your programs?
 
@@ -45,7 +43,7 @@ Cells may not be the panacea of programming, but it
 sure helps a lot in contexts where keeping a set of 
 values consistent is crucial. A particular set of 
 applications where this is important are graphical applicationsSee the cells-gtk project: [http://common-lisp.net/project/cells-gtk]
-, where you need to mantain consistence beetwen what 
+, where you need to maintain consistency between what 
 the user sees and the real values held by the program 
 in its internal data structures. An example is the 
 state of the 'Cut' menu entry in an editor: it is 
@@ -59,12 +57,12 @@ those places to keep the menu entry in a consistent
 state. With cells, you just need to tell the system 
 that the state of the menu depends on the length of the 
 current text selection: if the length is 0 then the 
-state is 'disactivated', else it is 'activated'. Now 
-you can safely work on the rest of the application 
-ignoring the state of the menu: it will be 
-automatically recalculated every time the length of the 
-current selection varies. Moreover, everything relating 
-the menu entry is placed near its definition, and not 
+state is 'deactivated', else it is 'activated'. Now you 
+can safely work on the rest of the application ignoring 
+the state of the menu: it will be automatically 
+recalculated every time the length of the current 
+selection varies. Moreover, everything relating to the 
+menu entry is placed near its definition, and not 
 scattered across different functions/methods.
 
 2 Installation
@@ -124,7 +122,7 @@ hello-cells.lisp:
 
   (let ((h (make-instance 'hello-cells)))
 
-    (dolist (n '(10 20 30 40 50 60))
+    (dolist (n '(10 20 30 40 50 60 60))
 
       (setf (num h) n)
 
@@ -162,13 +160,15 @@ num is 50 and square-num is 2500
 
 num is 60 and square-num is 3600
 
+num is 60 and square-num is 3600
+
 NIL
 
 What happens within the function 'hello'? First, an 
 object of type hello-cells is created. After that the 
-program iterates other the contents of the list '(10 20 
-30 40 50 60), and every number is used to set the num 
-slot of the object h. Then the num slot is printed 
+program iterates over the contents of the list '(10 20 
+30 40 50 60 60), and every number is used to set the 
+num slot of the object h. Then the num slot is printed 
 together with the slot square-num. The printed value of 
 the slot num gives us no surprise: it has the value we 
 gave it. This doesn't hold for the slot square-num, 
@@ -179,28 +179,29 @@ just cells working for us: we told the system that the relation
  num*num=squarenum 
 
 must hold, and every time num changes, the expression 
-(* (num self) (num self)) is re-evaluated.
+(* (num self) (num self)) is re-evaluated. Note that 
+the relation isn't a mathematical equation: you can't 
+change square-num and expect to find its square root in num.
 
 3.2 The program line-by-line
 
-Lets now analise the program. The very first line uses 
+Lets now analyze the program. The very first line uses 
 the construct defmodel:
 
 (defmodel hello-cells ()
 
 defmodel is very similar to defclass and everything 
-valid in a declass construct is valid within defmodeldefmodel is a layer built on top of defclass. 
-The difference is that all the slots defined within it 
-will be tracked by cells and a dependance relation 
-beetwen an object of type hello-cells and its slots 
-will be created: if a slot gets changed then the object 
-will be considered changed, as you would normally expect.
+valid in a defclass construct is valid within defmodeldefmodel is a layer built on top of defclass. 
+The main difference is that all the slots defined 
+within it will be tracked by cells, except slots that 
+are explicitly declared to be ignored by the system by 
+specifying :cell nil in the definition.
 
 ((num :accessor num :initarg :num :initform (c-in 0))
 
 Here we define the slot num as we would do within a 
 standard class declaration. The difference is in its 
-initialization epxression: instead of the number 0 we 
+initialization expression: instead of the number 0 we 
 have (c-in 0). Why? (c-in <expr>) is a construct that 
 tells cells that the value of num may be changed, so 
 whenever it does change a re-evaluation of all the 
@@ -208,7 +209,10 @@ slots that depend on it must be triggered. If we did
 just write 0 instead of (c-in 0) a runtime error would 
 have been raised during the execution of (setf (num h) 
 ...). So, when a slot is writable it must be signalled 
-to cells with the (c-in ...) construct.
+to cells with the (c-in ...) construct. This is 
+necessary to let cells do some optimizations like 
+avoiding to remember dependencies on slots that will 
+never change.
 
 (square-num :accessor square-num 
 
@@ -234,10 +238,16 @@ num now:
 (let ((h (make-instance 'hello-cells :num (c-in 50))))
 
 Note that you must repeat the (c-in ...) construct. 
-When an object is created, all the values of its slots 
-are computed for the first time, in this case the 
-expression (* (num self) (num self)) is evaluated and 
-the value given to the slot square-num.
+This is because the behavior of the slot (input cell, 
+constant, ruled cell) is decided on a per instance 
+basis, not on a per class basis. This means that, in 
+our example, we could have two objects of type 
+hello-cells, one where the slot num is settable and one 
+where it is has a constant value. When an object is 
+created, all the values of its slots are computed for 
+the first time, in this case the expression (* (num 
+self) (num self)) is evaluated and the value given to 
+the slot square-num.
 
 (setf (num h) n)
 
@@ -260,27 +270,34 @@ calling (cell-reset):
 
 NIL
 
-This could be handy after an error has corrupted the 
-system and cells doesn't seem to work correctly anymore.
+This could be necessary after an error has corrupted 
+the system and cells doesn't seem to work correctly 
+anymore. It's also a good practice to reset the system 
+before running code that uses cells.
 
 4 The family system
 
-Objects whose type has been defined using defmodel can 
-be organized in families. A family is a tree of objects 
-(not models!) that can reference each other using the 
-functions (fm-other ...), (fm^ ...) and others. You can 
-specify the family tree at object creation time passing 
-a list of children to the argument :kids. 
-Alternatively, you can access the slot .kids 
-(automatically created by defmodel) and set it at 
-runtime to change the family components. .kids is a 
-slot of type c-in, and you can access it through the 
-method (kids object). To have access to the members of 
-a family you first need to give them a name with the 
-argument :md-name. To use these features your models 
-must inherit from the model 'family'. Models that 
-inherit from family have also a .value slot associated, 
-wich you can access through the method (value self)In older releases of cells you had to use (md-value 
+Objects whose type have been defined using defmodel can 
+be organized in families. A family is a tree of model 
+instances (not of model classes!) that can reference 
+each other using the functions (fm-other ...), (fm^ 
+...) and others. You can specify the family tree at 
+object creation time passing a list of children to the 
+argument :kids. Alternatively, you can access the slot 
+.kids (automatically created by defmodel) and set it at 
+runtime to change the family components. .kids is, by 
+default, a slot of type c-in, and you can access it 
+through the method (kids object). You can change the 
+.kids slot to be of a type other than c-in as you could 
+do with any other slot. To access the members of a 
+family you can give them a name with the argument 
+:md-name and then reference them by their name. Another 
+way to access them is through their type: you could 
+say, for example, "give me all the successors of type my-type"
+. To use these features your models must inherit from 
+the model 'family'. Models that inherit from family 
+have also a .value slot associated, which you can 
+access through the method (value self)In older releases of cells you had to use (md-value 
 self) instead
 . The following example shows some of these things in action:
 
@@ -375,7 +392,11 @@ list we use the method (kids self).
   (the-kids
 
 We specify the children list using the :kids argument. 
-the-kids builds a list of children using the following arguments.
+the-kids builds a list of children using the following 
+arguments. the-kids also removes nil kids and if an 
+argument is a list then it is flattened, e.g. (the-kids 
+(list k1 (list (list k2 nil) k3))) will return a list 
+with the kids k1, k2 and k3.
 
 (make-kid 'node :md-name :n5 :val (c-in 5))
 
@@ -426,22 +447,31 @@ there is no self and we must supply a starting point.
 
 5 Defining an observer
 
-Cells lets you define a function to execute immediatly 
+Cells lets you define a function to execute immediately 
 after a c-in slot is modified. This function is called 
 an "observer". To define it, use the defobserver construct:
 
-(defobserver <slot-name> ((<self> <model-name>) 
-<old-value> <new-value>)
+(defobserver <slot-name> (&optional (<self> self) 
+
+                                    (<new-value> old-value)
+
+                                    (<old-value> new-value)
+
+                                    (<old-value-boundp> 
+old-value-boundp))
 
   <function-body>)
 
 This function will be executed every time the slot 
 <slot-name> of an object of type <model-name> is 
 modified. <old-value> will hold the previous value of 
-the slot, and <new-value> the new one. If not given, 
-<self>, <old-value> and <new-value> will default to 
-'self', 'new-value', 'old-value'. In older releases of 
-cells defobserver was called def-c-output.
+the slot, <new-value> the new one and 
+<old-value-boundp> will be nil if this is the first 
+time the slot gets a value and t otherwise. If not 
+given, <self>, <new-value>, <old-value> and 
+<old-value-boundp> will default to 'self', 'new-value', 
+'old-value' and 'old-value-bound-p'. In older releases 
+of cells defobserver was called def-c-output.
 
 Suppose we want to log all the values that the num slot 
 assumes: we can do this defining an observer function. 
@@ -485,12 +515,131 @@ new value of num is: 60
 
 num is 60 and square-num is 3600 
 
+num is 60 and square-num is 3600
+
 NIL
 
 As you can see from the output, every time we set (num 
 h) with a different value, the action previously 
 defined is called. This also happens when (num h) is 
-initialized for the first time at object creation time.
+initialized for the first time at object creation time. 
+You may have noted that when we set (num h) to 60 for 
+the second time, the observer function isn't called: 
+this is because when you set a slot to a new value that 
+is the same (according to the function eql) as its old 
+one, the change isn't propagated because there is no 
+need to propagate it: it didn't change! 
+
+Now look at the following piece of code: 
+
+(defmodel str-model ()
+
+  ((str :accessor str :initform (c-in "") :initarg :str)
+
+   (rev-str :accessor rev-str :initform (c? (reverse 
+(str self))))))
+
+
+
+(defobserver str ()
+
+  (format t "changed!~%"))
+
+
+
+(defun try-str-model ()
+
+  (let ((s (make-instance 'str-model)))
+
+    (dolist (l `("Hello!" "Bye" 
+
+                 ,(concatenate 'string "By" "e") "!olleH"))
+
+      (setf (str s) l)
+
+      (format t "str is \"~a\", rev-str is \"~a\"~%" 
+
+              (str s) (rev-str s)))))
+
+It does nothing new: it constrains rev-str to be the 
+reverse of str, creates an instance of str-model and 
+prints some strings together with their reverse. It 
+also logs every time it needs to compute the reversed 
+string. Note that the second and the third strings of 
+the list are actually equal. Lets try to run the code 
+(supposing you wrote it in hello-cells.lisp):
+
+> (load "hello-cells.lisp")
+
+T
+
+> (try-str-model)
+
+changed!
+
+changed!
+
+str is "Hello!", rev-str is "!olleH"
+
+changed!
+
+str is "Bye", rev-str is "eyB"
+
+changed!
+
+str is "Bye", rev-str is "eyB"
+
+changed!
+
+str is "!olleH", rev-str is "Hello!"
+
+NIL
+
+The reversed string is calculated every time we set 
+(str s), even when we're changing it from "Bye" to "Bye". 
+But "Bye" and "Bye" are equal! Why do we need to waste time 
+reversing it twice? Because cells by default uses eql 
+to test for equality and if two strings aren't the same 
+string (i.e. they don't have the same memory address) 
+eql considers them to be different. The following piece 
+of code shows us another problem: suppose we change 
+
+`("Hello!" "Bye" ,(concatenate 'string "By" "e") "!olleH")
+
+to
+
+`("Hello!" "Bye" "Bye" "!olleH")
+
+depending on the Common Lisp implementation you run the 
+program on you'll have a different output! Solving the 
+problem is easy, we just need to use equal instead of 
+eql as the equality function. To supply your own 
+equality function pass it to the :unchanged-if argument 
+in the slot definition:
+
+(str :accessor str :initform (c-in "") :initarg :str 
+
+     :unchanged-if #'equal)
+
+Now we get the same expected result on any implementation:
+
+changed!
+
+changed!
+
+str is "Hello!", rev-str is "!olleH"
+
+changed!
+
+str is "Bye", rev-str is "eyB"
+
+str is "Bye", rev-str is "eyB"
+
+changed!
+
+str is "!olleH", rev-str is "Hello!"
+
+NIL
 
 6 Functions & macros reference
 
@@ -509,18 +658,17 @@ defmodel
 
 (Macro) Defines a new model. It has the same structure 
 and the accept the same options of a class definition. 
-Within defmodel you have access to the variable self, 
-representing the current object. <slot-definition> 
-accepts the special argument :cell that lets you 
-declare what kind of slot it is. The default is a 
-normal cell slot. Other options include:
+<slot-definition> accepts the special argument :cell 
+that lets you declare what kind of slot it is. The 
+default is a normal cell slot. Other options include:
 
 1. :cell nil the slot will be ignored by the 
   constraints-handling system
 
 2. :cell :ephemeral when an ephemeral slot is changed, 
   everything works as with a normal cell, but after the 
-  propagation has ended, its value will become nil.
+  propagation has ended, its value will become nil. 
+  They are useful to model events.
 
 There are other types of cells (delta, lazy, etc.) not 
 covered here.
@@ -531,7 +679,8 @@ c-in
 
 (Macro) Initializes a cell slot with the value expr. 
 When a cell slot initialized with c-in changes, 
-dependant cells will be recalculated.
+dependant cells will be recalculated. The value of a 
+cell slot initialized with c-in can be setted.
 
 c-input
 
@@ -544,11 +693,21 @@ result into an error.
 
 c?
 
-(c? <expr>)
+(c? <body>)
 
-(Macro) Initializes a cell slot with the value expr. If 
-expr references input cell slots, <expr> will be 
-recalculated whenever those slots change.
+(Macro) Initializes a cell slot with the value of 
+<body>. If <body> references input cell slots, it will 
+be recalculated whenever those slots change. Within c? 
+you have access to the variable self, representing the 
+current object
+
+c-formula
+
+(c-formula (<options>) <body>)
+
+(Macro) Same as c?, but lets you specify extra options. 
+For example, the option :inputp lets you build a cell 
+that behaves like a cell initialized with both c? and c-in.
 
 not-to-be
 
@@ -560,9 +719,12 @@ defobserver
 
 (defobserver <slot-name> (&optional (<self> self) 
 
-                                    (<old-value> old-value)
+                                    (<new-value> old-value)
 
-                                    (<new-value> new-value))
+                                    (<old-value> new-value)
+
+                                    (<old-value-boundp> 
+old-value-boundp))
 
   <function-body>)
 
@@ -649,6 +811,19 @@ fm^
 (Macro) Same as (fm-other <name> (fm-parent 
 <starting-point>)), but doesn't search <starting-point> 
 and its children.
+
+fm-kid-typed
+
+(fm-kid-typed <self> <type>)
+
+(Function) Finds the first <self>'s child whose type is <type>.
+
+fm-descendant-typed
+
+(fm-descendant-typed <self> <type>)
+
+(Function) Finds the first descendant of <self> whose 
+type is <type>
 
 6.3 Misc
 
