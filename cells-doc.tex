@@ -811,6 +811,122 @@ construct instead of c?/c\_?/c?\_ and c-input instead of c-in (see
 the {}``Functions \& macros reference'' section).
 
 
+\section{Synapses}
+
+Suppose that you have a cell A that depends on another cell B, but
+you want A to change only when B changes by an amount over a given
+threshold, maybe because B receives data from an external probe and
+you don't want A to over-react to small fluctuations. Synapses let
+you do this, and they give you more control over the constraint propagation
+system. Basically, using synapses you can tell the system if a change
+should be propagated or not. The following example shows a {}``clock''
+that changes only after a minimal amount of time:
+
+\begin{lyxcode}
+(defmodel~syn-time~()
+
+~~((current-time~:accessor~current-time~:initarg~:current-time
+
+~~~~~~~~~~~~~~~~~:initform~(c-in~0))
+
+~~~(wait-time~:accessor~wait-time~:initarg~:wait-time~:initform~(c-in~0))
+
+~~~(time-elapsed~:accessor~time-elapsed
+
+~~~~~~~~~~~~~~~~~:initform
+
+~~~~~~~~~~~~~~~~~(c?
+
+~~~~~~~~~~~~~~~~~~~(f-sensitivity~:syn~((wait-time~self))
+
+~~~~~~~~~~~~~~~~~~~~~(current-time~self))))))
+
+
+
+(defun~try-syn-time~()
+
+~~(let~((tm~(make-instance~'syn-time~:wait-time~(c-in~2))))
+
+~~~~(dotimes~(n~10)
+
+~~~~~~(format~t~\char`\"{}time~+1\textasciitilde{}\%\char`\"{})
+
+~~~~~~(incf~(current-time~tm))
+
+~~~~~~(format~t~\char`\"{}time-elapsed~is~\textasciitilde{}a\textasciitilde{}\%\char`\"{}~(time-elapsed~tm)))))
+\end{lyxcode}
+time-elapsed holds the same value of current-time, but it changes
+only when current-time changes by at least wait-time units. In the
+main function we simulate time with a loop that increments current-time
+by one unit and then shows elapsed-time. The most important part of
+the program is 
+
+\begin{lyxcode}
+(f-sensitivity~:syn~((wait-time~self))
+
+~~(current-time~self))
+\end{lyxcode}
+Here we create a synapse named :syn. It is of type f-sensitivity:
+(current-time self) is evaluated \emph{always}, but if the difference
+between the previously propagated value (if there is one) and the
+value it returns is lesser than (wait-time self), then the slot elapsed-time
+won't change and, consequently, nothing will be propagated. The expected
+result then will be:
+
+\begin{lyxcode}
+>~(load~{}``hello-cells.lisp'')
+
+T
+
+>~(try-syn-time)
+
+time~+1
+
+time-elapsed~is~0
+
+time~+1
+
+time-elapsed~is~2
+
+time~+1
+
+time-elapsed~is~2
+
+time~+1
+
+time-elapsed~is~4
+
+time~+1
+
+time-elapsed~is~4
+
+time~+1
+
+time-elapsed~is~6
+
+time~+1
+
+time-elapsed~is~6
+
+time~+1
+
+time-elapsed~is~8
+
+time~+1
+
+time-elapsed~is~8
+
+time~+1
+
+time-elapsed~is~10
+
+NIL
+\end{lyxcode}
+time-elapsed changes only when the accumulated difference is at least
+wait-time (2 in this case). Other synapses available are f-delta,
+f-plusp, f-zerop.
+
+
 \section{Functions \& macros reference}
 
 Here follows a quick reference of the main functions and macros.
@@ -839,8 +955,6 @@ it is. The default is a normal cell slot. Other options include:
 as with a normal cell, but after the propagation has ended, its value
 will become nil. They are useful to model events.
 \end{enumerate}
-There are other types of cells (delta, lazy, etc.) not covered here.
-
 \begin{lyxlist}{00.00.0000}
 \item [c-in]~
 \end{lyxlist}
@@ -871,6 +985,22 @@ access to it will result into an error.
 references input cell slots, it will be recalculated whenever those
 slots change. Within c? you have access to the variable self, representing
 the current object
+
+\begin{lyxlist}{00.00.0000}
+\item [c\_?]~
+\end{lyxlist}
+\begin{lyxcode}
+(c\_?~<body>)
+\end{lyxcode}
+(Macro) Creates a lazy ruled cell slot of type :until-asked.
+
+\begin{lyxlist}{00.00.0000}
+\item [c?\_]~
+\end{lyxlist}
+\begin{lyxcode}
+(c?\_~<body>)
+\end{lyxcode}
+(Macro) Creates a lazy ruled cell slot of type :always.
 
 \begin{lyxlist}{00.00.0000}
 \item [c-formula]~
@@ -1023,6 +1153,33 @@ doesn't search <starting-point> and its children.
 (fm-descendant-typed~<self>~<type>)
 \end{lyxcode}
 (Function) Finds the first descendant of <self> whose type is <type>
+
+
+\subsection{Synapses}
+
+\begin{lyxlist}{00.00.0000}
+\item [f-sensitivity]~
+\end{lyxlist}
+\begin{lyxcode}
+(f-sensitivity~<name>~(<sensitivity>~\&optional~<subtypename>)
+
+~~<body>)
+\end{lyxcode}
+(Macro) Creates a synapse named <name> that propagates changes only
+when the value returned by <body> differs by at least <sensitivity>
+from the value it had the last time it propagated.
+
+\begin{lyxlist}{00.00.0000}
+\item [f-delta]~
+\end{lyxlist}
+\begin{lyxcode}
+(f-delta~<name>~(\&key~<sensitivity>~(<type>~'number))~
+
+~~<body>)
+\end{lyxcode}
+(Macro) Creates a synapse named <name> that propagates changes only
+when the difference between the value returned by <body> and the value
+it returned the previous time is strictly greater than <sensitivity>. 
 
 
 \subsection{Misc}

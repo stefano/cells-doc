@@ -11,11 +11,13 @@ Cells tutorial
 4 The family system
 5 Defining an observer
 6 Lazy cells
-7 Functions & macros reference
-    7.1 Main
-    7.2 Family models
-    7.3 Misc
-8 Other resources
+7 Synapses
+8 Functions & macros reference
+    8.1 Main
+    8.2 Family models
+    8.3 Synapses
+    8.4 Misc
+9 Other resources
 
 
 
@@ -805,12 +807,129 @@ prefer long descriptive names, though, you can use the
 c-formula construct instead of c?/c_?/c?_ and c-input 
 instead of c-in (see the "Functions & macros reference" section).
 
-7 Functions & macros reference
+7 Synapses
+
+Suppose that you have a cell A that depends on another 
+cell B, but you want A to change only when B changes by 
+an amount over a given threshold, maybe because B 
+receives data from an external probe and you don't want 
+A to over-react to small fluctuations. Synapses let you 
+do this, and they give you more control over the 
+constraint propagation system. Basically, using 
+synapses you can tell the system if a change should be 
+propagated or not. The following example shows a "clock" 
+that changes only after a minimal amount of time:
+
+(defmodel syn-time ()
+
+  ((current-time :accessor current-time :initarg :current-time
+
+                 :initform (c-in 0))
+
+   (wait-time :accessor wait-time :initarg :wait-time 
+:initform (c-in 0))
+
+   (time-elapsed :accessor time-elapsed
+
+                 :initform
+
+                 (c?
+
+                   (f-sensitivity :syn ((wait-time self))
+
+                     (current-time self))))))
+
+
+
+(defun try-syn-time ()
+
+  (let ((tm (make-instance 'syn-time :wait-time (c-in 2))))
+
+    (dotimes (n 10)
+
+      (format t "time +1~%")
+
+      (incf (current-time tm))
+
+      (format t "time-elapsed is ~a~%" (time-elapsed tm)))))
+
+time-elapsed holds the same value of current-time, but 
+it changes only when current-time changes by at least 
+wait-time units. In the main function we simulate time 
+with a loop that increments current-time by one unit 
+and then shows elapsed-time. The most important part of 
+the program is 
+
+(f-sensitivity :syn ((wait-time self))
+
+  (current-time self))
+
+Here we create a synapse named :syn. It is of type 
+f-sensitivity: (current-time self) is evaluated always, 
+but if the difference between the previously propagated 
+value (if there is one) and the value it returns is 
+lesser than (wait-time self), then the slot 
+elapsed-time won't change and, consequently, nothing 
+will be propagated. The expected result then will be:
+
+> (load "hello-cells.lisp")
+
+T
+
+> (try-syn-time)
+
+time +1
+
+time-elapsed is 0
+
+time +1
+
+time-elapsed is 2
+
+time +1
+
+time-elapsed is 2
+
+time +1
+
+time-elapsed is 4
+
+time +1
+
+time-elapsed is 4
+
+time +1
+
+time-elapsed is 6
+
+time +1
+
+time-elapsed is 6
+
+time +1
+
+time-elapsed is 8
+
+time +1
+
+time-elapsed is 8
+
+time +1
+
+time-elapsed is 10
+
+NIL
+
+time-elapsed changes only when the accumulated 
+difference is at least wait-time (2 in this case). 
+Other synapses available are f-delta, f-plusp, f-zerop.
+
+8 Functions & macros reference
 
 Here follows a quick reference of the main functions 
 and macros.
 
-7.1 Main
+8.1 Main
 
 defmodel
 
@@ -833,9 +952,6 @@ default is a normal cell slot. Other options include:
   everything works as with a normal cell, but after the 
   propagation has ended, its value will become nil. 
   They are useful to model events.
-
-There are other types of cells (delta, lazy, etc.) not 
-covered here.
 
 c-in
 
@@ -864,6 +980,18 @@ c?
 be recalculated whenever those slots change. Within c? 
 you have access to the variable self, representing the 
 current object
+
+c_?
+
+(c_? <body>)
+
+(Macro) Creates a lazy ruled cell slot of type :until-asked.
+
+c?_
+
+(c?_ <body>)
+
+(Macro) Creates a lazy ruled cell slot of type :always.
 
 c-formula
 
@@ -899,7 +1027,7 @@ old-value-boundp))
 the slot <slot-name> changes. In previous versions of 
 cells it were called def-c-output.
 
-7.2 Family models
+8.2 Family models
 
 The following only works for models that inherit from family.
 
@@ -992,7 +1120,31 @@ fm-descendant-typed
 (Function) Finds the first descendant of <self> whose 
 type is <type>
 
-7.3 Misc
+8.3 Synapses
+
+f-sensitivity
+
+(f-sensitivity <name> (<sensitivity> &optional <subtypename>)
+
+  <body>)
+
+(Macro) Creates a synapse named <name> that propagates 
+changes only when the value returned by <body> differs 
+by at least <sensitivity> from the value it had the 
+last time it propagated.
+
+f-delta
+
+(f-delta <name> (&key <sensitivity> (<type> 'number)) 
+
+  <body>)
+
+(Macro) Creates a synapse named <name> that propagates 
+changes only when the difference between the value 
+returned by <body> and the value it returned the 
+previous time is strictly greater than <sensitivity>. 
+
+8.4 Misc
 
 cells-reset
 
@@ -1000,7 +1152,7 @@ cells-reset
 
 (Function) Resets the system.
 
-8 Other resources
+9 Other resources
 
 This tutorial just scratched the surface of cells. You 
 can find more documentation about cells within the 

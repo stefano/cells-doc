@@ -1266,6 +1266,185 @@ Functions & macros reference
  section).
 \layout Section
 
+Synapses
+\layout Standard
+
+Suppose that you have a cell A that depends on another cell B, but you want
+ A to change only when B changes by an amount over a given threshold, maybe
+ because B receives data from an external probe and you don't want A to
+ over-react to small fluctuations.
+ Synapses let you do this, and they give you more control over the constraint
+ propagation system.
+ Basically, using synapses you can tell the system if a change should be
+ propagated or not.
+ The following example shows a 
+\begin_inset Quotes eld
+\end_inset 
+
+clock
+\begin_inset Quotes erd
+\end_inset 
+
+ that changes only after a minimal amount of time:
+\layout LyX-Code
+
+(defmodel syn-time ()
+\layout LyX-Code
+
+  ((current-time :accessor current-time :initarg :current-time
+\layout LyX-Code
+
+                 :initform (c-in 0))
+\layout LyX-Code
+
+   (wait-time :accessor wait-time :initarg :wait-time :initform (c-in 0))
+\layout LyX-Code
+
+   (time-elapsed :accessor time-elapsed
+\layout LyX-Code
+
+                 :initform
+\layout LyX-Code
+
+                 (c?
+\layout LyX-Code
+
+                   (f-sensitivity :syn ((wait-time self))
+\layout LyX-Code
+
+                     (current-time self))))))
+\layout LyX-Code
+
+\layout LyX-Code
+
+(defun try-syn-time ()
+\layout LyX-Code
+
+  (let ((tm (make-instance 'syn-time :wait-time (c-in 2))))
+\layout LyX-Code
+
+    (dotimes (n 10)
+\layout LyX-Code
+
+      (format t "time +1~%")
+\layout LyX-Code
+
+      (incf (current-time tm))
+\layout LyX-Code
+
+      (format t "time-elapsed is ~a~%" (time-elapsed tm)))))
+\layout Standard
+
+time-elapsed holds the same value of current-time, but it changes only when
+ current-time changes by at least wait-time units.
+ In the main function we simulate time with a loop that increments current-time
+ by one unit and then shows elapsed-time.
+ The most important part of the program is 
+\layout LyX-Code
+
+(f-sensitivity :syn ((wait-time self))
+\layout LyX-Code
+
+  (current-time self))
+\layout Standard
+
+Here we create a synapse named :syn.
+ It is of type f-sensitivity: (current-time self) is evaluated 
+\emph on 
+always
+\emph default 
+, but if the difference between the previously propagated value (if there
+ is one) and the value it returns is lesser than (wait-time self), then
+ the slot elapsed-time won't change and, consequently, nothing will be propagate
+d.
+ The expected result then will be:
+\layout LyX-Code
+
+> (load 
+\begin_inset Quotes eld
+\end_inset 
+
+hello-cells.lisp
+\begin_inset Quotes erd
+\end_inset 
+
+)
+\layout LyX-Code
+
+T
+\layout LyX-Code
+
+> (try-syn-time)
+\layout LyX-Code
+
+time +1
+\layout LyX-Code
+
+time-elapsed is 0
+\layout LyX-Code
+
+time +1
+\layout LyX-Code
+
+time-elapsed is 2
+\layout LyX-Code
+
+time +1
+\layout LyX-Code
+
+time-elapsed is 2
+\layout LyX-Code
+
+time +1
+\layout LyX-Code
+
+time-elapsed is 4
+\layout LyX-Code
+
+time +1
+\layout LyX-Code
+
+time-elapsed is 4
+\layout LyX-Code
+
+time +1
+\layout LyX-Code
+
+time-elapsed is 6
+\layout LyX-Code
+
+time +1
+\layout LyX-Code
+
+time-elapsed is 6
+\layout LyX-Code
+
+time +1
+\layout LyX-Code
+
+time-elapsed is 8
+\layout LyX-Code
+
+time +1
+\layout LyX-Code
+
+time-elapsed is 8
+\layout LyX-Code
+
+time +1
+\layout LyX-Code
+
+time-elapsed is 10
+\layout LyX-Code
+
+NIL
+\layout Standard
+
+time-elapsed changes only when the accumulated difference is at least wait-time
+ (2 in this case).
+ Other synapses available are f-delta, f-plusp, f-zerop.
+\layout Section
+
 Functions & macros reference
 \layout Standard
 
@@ -1303,9 +1482,6 @@ defmodel
  with a normal cell, but after the propagation has ended, its value will
  become nil.
  They are useful to model events.
-\layout Standard
-
-There are other types of cells (delta, lazy, etc.) not covered here.
 \layout List
 \labelwidthstring 00.00.0000
 
@@ -1347,6 +1523,26 @@ c?
  those slots change.
  Within c? you have access to the variable self, representing the current
  object
+\layout List
+\labelwidthstring 00.00.0000
+
+c_?
+\layout LyX-Code
+
+(c_? <body>)
+\layout Standard
+
+(Macro) Creates a lazy ruled cell slot of type :until-asked.
+\layout List
+\labelwidthstring 00.00.0000
+
+c?_
+\layout LyX-Code
+
+(c?_ <body>)
+\layout Standard
+
+(Macro) Creates a lazy ruled cell slot of type :always.
 \layout List
 \labelwidthstring 00.00.0000
 
@@ -1537,6 +1733,40 @@ fm-descendant-typed
 \layout Standard
 
 (Function) Finds the first descendant of <self> whose type is <type>
+\layout Subsection
+
+Synapses
+\layout List
+\labelwidthstring 00.00.0000
+
+f-sensitivity
+\layout LyX-Code
+
+(f-sensitivity <name> (<sensitivity> &optional <subtypename>)
+\layout LyX-Code
+
+  <body>)
+\layout Standard
+
+(Macro) Creates a synapse named <name> that propagates changes only when
+ the value returned by <body> differs by at least <sensitivity> from the
+ value it had the last time it propagated.
+\layout List
+\labelwidthstring 00.00.0000
+
+f-delta
+\layout LyX-Code
+
+(f-delta <name> (&key <sensitivity> (<type> 'number)) 
+\layout LyX-Code
+
+  <body>)
+\layout Standard
+
+(Macro) Creates a synapse named <name> that propagates changes only when
+ the difference between the value returned by <body> and the value it returned
+ the previous time is strictly greater than <sensitivity>.
+ 
 \layout Subsection
 
 Misc
