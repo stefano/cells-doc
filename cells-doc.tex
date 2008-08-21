@@ -811,6 +811,194 @@ construct instead of c?/c\_?/c?\_ and c-input instead of c-in (see
 the {}``Functions \& macros reference'' section).
 
 
+\section{Drifters}
+
+Another type of cells are drifter cells. They act like ruled cells,
+but the value returned by its body is interpreted as an increment,
+so after it has been re-evaluated its value becomes its previous one
+plus the one returned by the body. The following example shows drifter
+cells in action:
+
+\begin{lyxcode}
+(defmodel~counter~()
+
+~~((how-many~:accessor~how-many
+
+~~~~~~~~~~~~~:initform~(c...~(0)
+
+~~~~~~~~~~~~~~~~~~~~~~~~~(length~(\textasciicircum{}current-elems))))
+
+~~~(current-elems~:accessor~current-elems
+
+~~~~~~~~~~~~~~~~~~:initform~(c-in~nil))))
+
+
+
+(defun~try-counter~()
+
+~~(let~((m~(make-instance~'counter)))
+
+~~~~(dolist~(l~'((1~2~3)~(4~5)~(1~2~3~4)))
+
+~~~~~~(setf~(current-elems~m)~l)
+
+~~~~~~(format~t~\char`\"{}current~elements:~\textasciitilde{}\{\textasciitilde{}a~\textasciitilde{}\}\textasciitilde{}\%\char`\"{}~(current-elems~m))
+
+~~~~~~(format~t~\char`\"{}\textasciitilde{}a~elements~seen~so~far\textasciitilde{}\%\char`\"{}~(how-many~m)))))
+\end{lyxcode}
+try-counter iterates other a list setting current-elems to a list
+of values, and after each iteration how-many will hold the total number
+of the elements within the lists seen so far. The output will be:
+
+\begin{lyxcode}
+>~(load~{}``hello-cells.lisp'')
+
+T
+
+>~(try-counter)
+
+elements:~1~2~3
+
+3~elements~seen~so~far
+
+elements:~4~5
+
+5~elements~seen~so~far
+
+elements:~1~2~3~4~~
+
+9~elements~seen~so~far
+
+NIL
+\end{lyxcode}
+The important passage in the code is the initialization of how-many:
+
+\begin{lyxcode}
+(c...~(0)
+
+~~(length~(\textasciicircum{}current-elems)))
+\end{lyxcode}
+(\textasciicircum{}current-elems) is just a shortcut for (current-elems
+self). The construct (c... (<initial-value>) <body>) creates a drifter
+cell whose initial value will be <initial-value>, in this case 0.
+When current-elems changes, (length (\textasciicircum{}current-elems))
+is re-evaluated, and its value is summed to how-many, so how-many
+will hold the total number of elements that current-elems has held
+so far.
+
+
+\section{Cyclic dependencies}
+
+It is possible to write code with cyclic dependencies: when A changes
+you need to take some action that changes B, which in turn sets A,
+but A has still to complete running the code needed to keep it in
+a consistent state. The following code shows how this situation could
+arise:
+
+\begin{lyxcode}
+(defmodel~cycle~()
+
+~~((cycle-a~:accessor~cycle-a~:initform~(c-in~nil))
+
+~~~(cycle-b~:accessor~cycle-b~:initform~(c-in~nil))))
+
+
+
+(defobserver~cycle-a~()
+
+~~(setf~(cycle-b~self)~new-value))
+
+
+
+(defobserver~cycle-b~()
+
+~~(setf~(cycle-a~self)~new-value))
+
+
+
+(defun~try-cycle~()
+
+~~(let~((m~(make-instance~'cycle)))
+
+~~~~(setf~(cycle-a~m)~'(?~!))
+
+~~~~(format~t~\char`\"{}\textasciitilde{}a~and~\textasciitilde{}a\char`\"{}~(cycle-a~m)~(cycle-b~m))))
+\end{lyxcode}
+When try-cycle sets cycle-a, its observer gets called, which sets
+cycle-b which in turn sets cycle-a. This is not an infinite cycle
+as it may seem, because the second time we set cycle-a we give it
+the same value we gave it the first time, so the cells engine should
+stop the propagation. Lets see if this does actually work:
+
+\begin{lyxcode}
+>~(load~{}``hello-cells.lisp'')
+
+T
+
+>~(try-cycle)
+
+SETF~of~<2:A~CYCLE-B/NIL~=~NIL>~must~be~deferred~by~wrapping~code~in~WITH-INTEGRITY
+
+~~~{[}Condition~of~type~SIMPLE-ERROR{]}
+\end{lyxcode}
+The message could vary depending on your Common Lisp implementation,
+but one thing is clear: the code doesn't work. This happens because
+when we set cycle-a for the second time, its observer is still running,
+so cycle-a could be in an inconsistent state. The error message tells
+us the solution: wrap the problematic code inside the with-integrity
+construct, which makes sure that cycle-a is consistent when that piece
+of code is run. The same problem exists for cycle-b and the solution
+is the same. We need then to change
+
+\begin{lyxcode}
+(defobserver~cycle-a~()
+
+~~(setf~(cycle-b~self)~new-value))
+\end{lyxcode}
+to
+
+\begin{lyxcode}
+(defobserver~cycle-a~()
+
+~~(with-integrity~(:change)
+
+~~~~(setf~(cycle-b~self)~new-value)))
+\end{lyxcode}
+and 
+
+\begin{lyxcode}
+(defobserver~cycle-b~()
+
+~~(setf~(cycle-a~self)~new-value))
+\end{lyxcode}
+to
+
+\begin{lyxcode}
+(defobserver~cycle-b~()
+
+~~(with-integrity~(:change)
+
+~~~~(setf~(cycle-a~self)~new-value)))
+\end{lyxcode}
+Now if we reload the code and run it we'll get the correct result.
+Make sure to call (cells-reset) after an error has occurred.
+
+\begin{lyxcode}
+>~(cells-reset)
+
+NIL
+
+>~(load~{}``hello-cells.lisp'')
+
+T
+
+>~(try-cycle)
+
+(?~!)~and~(?~!)
+
+NIL
+\end{lyxcode}
+
 \section{Synapses}
 
 Suppose that you have a cell A that depends on another cell B, but
@@ -955,6 +1143,9 @@ it is. The default is a normal cell slot. Other options include:
 as with a normal cell, but after the propagation has ended, its value
 will become nil. They are useful to model events.
 \end{enumerate}
+For every cell's accessor defmodel creates a macro \textasciicircum{}<accessor-name>
+that you can use as a shortcut for (<accessor-name> self).
+
 \begin{lyxlist}{00.00.0000}
 \item [c-in]~
 \end{lyxlist}
@@ -979,7 +1170,9 @@ access to it will result into an error.
 \item [c?]~
 \end{lyxlist}
 \begin{lyxcode}
-(c?~<body>)
+(c?
+
+~~<body>)
 \end{lyxcode}
 (Macro) Initializes a cell slot with the value of <body>. If <body>
 references input cell slots, it will be recalculated whenever those
@@ -990,7 +1183,9 @@ the current object
 \item [c\_?]~
 \end{lyxlist}
 \begin{lyxcode}
-(c\_?~<body>)
+(c\_?~
+
+~~<body>)
 \end{lyxcode}
 (Macro) Creates a lazy ruled cell slot of type :until-asked.
 
@@ -998,15 +1193,29 @@ the current object
 \item [c?\_]~
 \end{lyxlist}
 \begin{lyxcode}
-(c?\_~<body>)
+(c?\_~
+
+~~<body>)
 \end{lyxcode}
 (Macro) Creates a lazy ruled cell slot of type :always.
+
+\begin{lyxlist}{00.00.0000}
+\item [c...]~
+\end{lyxlist}
+\begin{lyxcode}
+(c...~(<initial-value>)
+
+~~<body>)
+\end{lyxcode}
+(Macro) Creates a drifter cell with initial value <initial-value>.
 
 \begin{lyxlist}{00.00.0000}
 \item [c-formula]~
 \end{lyxlist}
 \begin{lyxcode}
-(c-formula~(<options>)~<body>)
+(c-formula~(<options>)
+
+~~<body>)
 \end{lyxcode}
 (Macro) Same as c?, but lets you specify extra options. For example,
 the option :inputp lets you build a cell that behaves like a cell
@@ -1038,6 +1247,19 @@ that lets you specify the laziness of the cell: nil, t, :once-asked,
 \end{lyxcode}
 (Macro) Defines a function that is called every time the slot <slot-name>
 changes. In previous versions of cells it were called def-c-output.
+
+\begin{lyxlist}{00.00.0000}
+\item [with-integrity]~
+\end{lyxlist}
+\begin{lyxcode}
+(with-integrity~(\&optional~<opcode>~<defer-info>)
+
+~~<body>)
+\end{lyxcode}
+(Macro) Makes sure to run <body> only when the system is in a consistent
+state. <opcode> tells what type of anomaly should be handled. Possible
+values are :tell-dependents, :awaken, :client, :ephemeral-reset and
+:change.
 
 
 \subsection{Family models}
