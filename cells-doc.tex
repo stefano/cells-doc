@@ -679,7 +679,7 @@ There are three types of them, depending on their laziness:
 won't be reevaluated immediately if dependencies change, rather only
 when read by application code.
 \item :until-asked this does not get evaluated/observed until read by application
-code, but then it becomes un-lazy, eagerly reevaluated as soon as
+code, but then it becomes un-lazy, eagerly re-evaluated as soon as
 any dependency changes (not waiting until asked).
 \item :always this isn't evaluated/observed until read, and not reevaluated
 until read after a dependency changes.
@@ -687,9 +687,9 @@ until read after a dependency changes.
 There are two ways in which a cell can be lazy: by not being evaluated
 immediately after its creation and by not responding to dependencies
 change. In both cases, when the program asks for its value, the lazy
-cell is evaluated. The first type embodies only the second way, the
-second type only the first way and the third type is lazy in both
-ways. The following example shows the initialization phase lazy cells:
+cell is evaluated (if needed). The first type embodies only the second
+way, the second type only the first way and the third type is lazy
+in both ways. The following example shows the behavior of lazy cells:
 
 \begin{lyxcode}
 (defmodel~lazy-test~()
@@ -793,7 +793,7 @@ lazy-1:~(WHO~WILL~BE~EVALUATED?~!!)
 
 NIL
 \end{lyxcode}
-As you can see from the code to declare a ruled cell to be lazy you
+As you can see from the code, to declare a ruled cell to be lazy you
 just need to use the three constructs (c-formula (:lazy :one-asked)
 ...), (c\_? ...) and (c?\_ ...) for :once-asked, :until-asked and
 :always lazy cells, respectively. lazy-1 is evaluated immediately,
@@ -813,11 +813,11 @@ the {}``Functions \& macros reference'' section).
 
 \section{Drifters}
 
-Another type of cells are drifter cells. They act like ruled cells,
-but the value returned by its body is interpreted as an increment,
-so after it has been re-evaluated its value becomes its previous one
-plus the one returned by the body. The following example shows drifter
-cells in action:
+Another type of cells are drifter cells. A drifter cell acts like
+a ruled cell, but the value returned by its body is interpreted as
+an increment, so after it has been re-evaluated its value becomes
+its previous one plus the one returned by the body. The following
+example shows drifter cells in action:
 
 \begin{lyxcode}
 (defmodel~counter~()
@@ -1180,6 +1180,37 @@ slots change. Within c? you have access to the variable self, representing
 the current object
 
 \begin{lyxlist}{00.00.0000}
+\item [c?+n]~
+\end{lyxlist}
+\begin{lyxcode}
+(c?+n
+
+~~<body>)
+\end{lyxcode}
+(Macro) Creates a ruled cell whose value can be setted.
+
+\begin{lyxlist}{00.00.0000}
+\item [c?once]~
+\end{lyxlist}
+\begin{lyxcode}
+(c?once
+
+~~<body>)
+\end{lyxcode}
+(Macro) Creates a ruled cell that gets evaluated only once at initialization
+time.
+
+\begin{lyxlist}{00.00.0000}
+\item [c?1]~
+\end{lyxlist}
+\begin{lyxcode}
+(c?1
+
+~~<body>)
+\end{lyxcode}
+(Macro) Nickname for c?once.
+
+\begin{lyxlist}{00.00.0000}
 \item [c\_?]~
 \end{lyxlist}
 \begin{lyxcode}
@@ -1198,6 +1229,16 @@ the current object
 ~~<body>)
 \end{lyxcode}
 (Macro) Creates a lazy ruled cell slot of type :always.
+
+\begin{lyxlist}{00.00.0000}
+\item [c\_1]~
+\end{lyxlist}
+\begin{lyxcode}
+(c\_1
+
+~~<body>)
+\end{lyxcode}
+(Macro) Creates a lazy cell that gets evaluated only once.
 
 \begin{lyxlist}{00.00.0000}
 \item [c...]~
@@ -1261,6 +1302,18 @@ state. <opcode> tells what type of anomaly should be handled. Possible
 values are :tell-dependents, :awaken, :client, :ephemeral-reset and
 :change.
 
+\begin{lyxlist}{00.00.0000}
+\item [without-c-dependency]~
+\end{lyxlist}
+\begin{lyxcode}
+(without-c-dependency
+
+~~<body>)
+\end{lyxcode}
+(Macro) Executes body without tracing any dependency. I.e. if we are
+within a ruled cell and <body> references a cell slot, when that slot
+changes the change is not propagated to the ruled cell.
+
 
 \subsection{Family models}
 
@@ -1300,6 +1353,15 @@ lists of objects.
 \end{lyxcode}
 (Macro) The same as (make-instance <model-name> <args> :fm-parent
 self).
+
+\begin{lyxlist}{00.00.0000}
+\item [def-kid-slots]~
+\end{lyxlist}
+\begin{lyxcode}
+(def-kid-slots~\&rest~<kids>)
+\end{lyxcode}
+(Macro) Creates a function of one argument that builds a list of kids
+with the given parent. Within def-kid-slots self is bound to the parent. 
 
 \begin{lyxlist}{00.00.0000}
 \item [kids]~

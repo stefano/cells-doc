@@ -1071,8 +1071,8 @@ not
 \layout Enumerate
 
 :until-asked this does not get evaluated/observed until read by application
- code, but then it becomes un-lazy, eagerly reevaluated as soon as any dependenc
-y changes (not waiting until asked).
+ code, but then it becomes un-lazy, eagerly re-evaluated as soon as any
+ dependency changes (not waiting until asked).
 \layout Enumerate
 
 :always this isn't evaluated/observed until read, and not reevaluated until
@@ -1081,10 +1081,11 @@ y changes (not waiting until asked).
 
 There are two ways in which a cell can be lazy: by not being evaluated immediate
 ly after its creation and by not responding to dependencies change.
- In both cases, when the program asks for its value, the lazy cell is evaluated.
+ In both cases, when the program asks for its value, the lazy cell is evaluated
+ (if needed).
  The first type embodies only the second way, the second type only the first
  way and the third type is lazy in both ways.
- The following example shows the initialization phase lazy cells:
+ The following example shows the behavior of lazy cells:
 \layout LyX-Code
 
 (defmodel lazy-test ()
@@ -1240,7 +1241,7 @@ lazy-1: (WHO WILL BE EVALUATED? !!)
 NIL
 \layout Standard
 
-As you can see from the code to declare a ruled cell to be lazy you just
+As you can see from the code, to declare a ruled cell to be lazy you just
  need to use the three constructs (c-formula (:lazy :one-asked) ...), (c_?
  ...) and (c?_ ...) for :once-asked, :until-asked and :always lazy cells, respectively.
  lazy-1 is evaluated immediately, lazy-2 and lazy-3 only when they are needed
@@ -1270,9 +1271,9 @@ Drifters
 \layout Standard
 
 Another type of cells are drifter cells.
- They act like ruled cells, but the value returned by its body is interpreted
- as an increment, so after it has been re-evaluated its value becomes its
- previous one plus the one returned by the body.
+ A drifter cell acts like a ruled cell, but the value returned by its body
+ is interpreted as an increment, so after it has been re-evaluated its value
+ becomes its previous one plus the one returned by the body.
  The following example shows drifter cells in action:
 \layout LyX-Code
 
@@ -1808,6 +1809,46 @@ c?
 \layout List
 \labelwidthstring 00.00.0000
 
+c?+n
+\layout LyX-Code
+
+(c?+n
+\layout LyX-Code
+
+  <body>)
+\layout Standard
+
+(Macro) Creates a ruled cell whose value can be setted.
+\layout List
+\labelwidthstring 00.00.0000
+
+c?once
+\layout LyX-Code
+
+(c?once
+\layout LyX-Code
+
+  <body>)
+\layout Standard
+
+(Macro) Creates a ruled cell that gets evaluated only once at initialization
+ time.
+\layout List
+\labelwidthstring 00.00.0000
+
+c?1
+\layout LyX-Code
+
+(c?1
+\layout LyX-Code
+
+  <body>)
+\layout Standard
+
+(Macro) Nickname for c?once.
+\layout List
+\labelwidthstring 00.00.0000
+
 c_?
 \layout LyX-Code
 
@@ -1831,6 +1872,19 @@ c?_
 \layout Standard
 
 (Macro) Creates a lazy ruled cell slot of type :always.
+\layout List
+\labelwidthstring 00.00.0000
+
+c_1
+\layout LyX-Code
+
+(c_1
+\layout LyX-Code
+
+  <body>)
+\layout Standard
+
+(Macro) Creates a lazy cell that gets evaluated only once.
 \layout List
 \labelwidthstring 00.00.0000
 
@@ -1913,6 +1967,22 @@ with-integrity
  <opcode> tells what type of anomaly should be handled.
  Possible values are :tell-dependents, :awaken, :client, :ephemeral-reset
  and :change.
+\layout List
+\labelwidthstring 00.00.0000
+
+without-c-dependency
+\layout LyX-Code
+
+(without-c-dependency
+\layout LyX-Code
+
+  <body>)
+\layout Standard
+
+(Macro) Executes body without tracing any dependency.
+ I.e.
+ if we are within a ruled cell and <body> references a cell slot, when that
+ slot changes the change is not propagated to the ruled cell.
 \layout Subsection
 
 Family models
@@ -1961,6 +2031,19 @@ make-kid
 \layout Standard
 
 (Macro) The same as (make-instance <model-name> <args> :fm-parent self).
+\layout List
+\labelwidthstring 00.00.0000
+
+def-kid-slots
+\layout LyX-Code
+
+(def-kid-slots &rest <kids>)
+\layout Standard
+
+(Macro) Creates a function of one argument that builds a list of kids with
+ the given parent.
+ Within def-kid-slots self is bound to the parent.
+ 
 \layout List
 \labelwidthstring 00.00.0000
 

@@ -670,7 +670,7 @@ depending on their laziness:
 
 2. :until-asked this does not get evaluated/observed 
   until read by application code, but then it becomes 
-  un-lazy, eagerly reevaluated as soon as any 
+  un-lazy, eagerly re-evaluated as soon as any 
   dependency changes (not waiting until asked).
 
 3. :always this isn't evaluated/observed until read, 
@@ -680,10 +680,10 @@ There are two ways in which a cell can be lazy: by not
 being evaluated immediately after its creation and by 
 not responding to dependencies change. In both cases, 
 when the program asks for its value, the lazy cell is 
-evaluated. The first type embodies only the second way, 
-the second type only the first way and the third type 
-is lazy in both ways. The following example shows the 
-initialization phase lazy cells:
+evaluated (if needed). The first type embodies only the 
+second way, the second type only the first way and the 
+third type is lazy in both ways. The following example 
+shows the behavior of lazy cells:
 
 (defmodel lazy-test ()
 
@@ -789,8 +789,8 @@ lazy-1: (WHO WILL BE EVALUATED? !!)
 
 NIL
 
-As you can see from the code to declare a ruled cell to 
-be lazy you just need to use the three constructs 
+As you can see from the code, to declare a ruled cell 
+to be lazy you just need to use the three constructs 
 (c-formula (:lazy :one-asked) ...), (c_? ...) and (c?_ 
 ...) for :once-asked, :until-asked and :always lazy 
 cells, respectively. lazy-1 is evaluated immediately, 
@@ -811,12 +811,12 @@ instead of c-in (see the "Functions & macros reference" section).
 
 7 Drifters
 
-Another type of cells are drifter cells. They act like 
-ruled cells, but the value returned by its body is 
-interpreted as an increment, so after it has been 
-re-evaluated its value becomes its previous one plus 
-the one returned by the body. The following example 
-shows drifter cells in action:
+Another type of cells are drifter cells. A drifter cell 
+acts like a ruled cell, but the value returned by its 
+body is interpreted as an increment, so after it has 
+been re-evaluated its value becomes its previous one 
+plus the one returned by the body. The following 
+example shows drifter cells in action:
 
 (defmodel counter ()
 
@@ -1176,6 +1176,31 @@ be recalculated whenever those slots change. Within c?
 you have access to the variable self, representing the 
 current object
 
+c?+n
+
+(c?+n
+
+  <body>)
+
+(Macro) Creates a ruled cell whose value can be setted.
+
+c?once
+
+(c?once
+
+  <body>)
+
+(Macro) Creates a ruled cell that gets evaluated only 
+once at initialization time.
+
+c?1
+
+(c?1
+
+  <body>)
+
+(Macro) Nickname for c?once.
+
 c_?
 
 (c_? 
@@ -1191,6 +1216,14 @@ c?_
   <body>)
 
 (Macro) Creates a lazy ruled cell slot of type :always.
+
+c_1
+
+(c_1
+
+  <body>)
+
+(Macro) Creates a lazy cell that gets evaluated only once.
 
 c...
 
@@ -1249,6 +1282,17 @@ anomaly should be handled. Possible values are
 :tell-dependents, :awaken, :client, :ephemeral-reset 
 and :change.
 
+without-c-dependency
+
+(without-c-dependency
+
+  <body>)
+
+(Macro) Executes body without tracing any dependency. 
+I.e. if we are within a ruled cell and <body> 
+references a cell slot, when that slot changes the 
+change is not propagated to the ruled cell.
+
 10.2 Family models
 
 The following only works for models that inherit from family.
@@ -1279,6 +1323,14 @@ make-kid
 
 (Macro) The same as (make-instance <model-name> <args> 
 :fm-parent self).
+
+def-kid-slots
+
+(def-kid-slots &rest <kids>)
+
+(Macro) Creates a function of one argument that builds 
+a list of kids with the given parent. Within 
+def-kid-slots self is bound to the parent. 
 
 kids
 
