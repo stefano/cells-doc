@@ -14,12 +14,13 @@ Cells tutorial
 7 Drifters
 8 Cyclic dependencies
 9 Synapses
-10 Functions & macros reference
-    10.1 Main
-    10.2 Family models
-    10.3 Synapses
-    10.4 Misc
-11 Other resources
+10 Example: playing sudoku
+11 Functions & macros reference
+    11.1 Main
+    11.2 Family models
+    11.3 Synapses
+    11.4 Misc
+12 Other resources
 
 
 
@@ -1113,12 +1114,445 @@ time-elapsed changes only when the accumulated
 difference is at least wait-time (2 in this case). 
 Other synapses available are f-delta, f-plusp, f-zerop.
 
-10 Functions & macros reference
+10 Example: playing sudoku
+
+We have seen a few example of using cells, but none of 
+them actually did something beside showing cells 
+behavior. Now we will see how to use cells to aid us 
+resolving a sudoku puzzle. First of all, some constants:
+
+(defparameter *all-values* '(1 2 3 4 5 6 7 8 9))
+
+(defparameter *row-len* 9)
+
+(defparameter *sq-size* 3)
+
+(defparameter *col-len* 9)
+
+The input board is a vector of vectors: every position 
+contains either a number from 1 to 9 or a '? telling 
+the program that it must find a value to fill in that 
+position. The following is an empty board: 
+
+(defparameter *board* 
+
+  #(#(? ? ? ? ? ? ? ? ?)
+
+    #(? ? ? ? ? ? ? ? ?)
+
+    #(? ? ? ? ? ? ? ? ?)
+
+    #(? ? ? ? ? ? ? ? ?)
+
+    #(? ? ? ? ? ? ? ? ?)
+
+    #(? ? ? ? ? ? ? ? ?)
+
+    #(? ? ? ? ? ? ? ? ?)
+
+    #(? ? ? ? ? ? ? ? ?)
+
+    #(? ? ? ? ? ? ? ? ?)))
+
+We will represent the playing board with the model 
+board, which has two slots: complete is a boolean that 
+tells if every position on the board has been filled 
+with a value, and squares is a vector of vectors 
+representing the actual board. The slot complete is a 
+lazy cell because it is needed rarely and it would be a 
+waste of time to recompute it whenever a single square 
+changes. Every square in the board is represented by 
+the model square, which has three slots: exact-val 
+holds the actual value of the square and it is NIL if 
+the square is empty, possible-vals holds a list of the 
+values that the square could assume without conflicting 
+with the exact-val of the squares in the same group, 
+and group is a reference to an object of type 
+square-group: squares in the same group cannot have the 
+same exact-val.
+
+(defmodel square-group ()
+
+  ((constraining :initform (c-in nil) :initarg :constraining
+
+                 :accessor constraining)))
+
+(defmodel square ()
+
+  ((group :accessor group :initform (c-in nil))
+
+   (exact-val :accessor exact-val :initform (c-in nil) 
+:initarg :exact-val)
+
+   (possible-vals 
+
+    :accessor possible-vals
+
+    :initform 
+
+    (c?
+
+      (when (and (^group) (not (^exact-val)))
+
+        (let ((c (constraining (^group))))
+
+          ;; a value must not be the same of the constraining
+
+          (remove-if-not 
+
+           #'(lambda (v) 
+
+               (every 
+
+                #'(lambda (x) 
+
+                    (not (eql v (exact-val x))))
+
+                c))
+
+           *all-values*)))))))
+
+(defun make-square (x)
+
+  (make-instance 'square :exact-val (c-in (if (eql x 
+'?) nil x))))
+
+(defmodel board ()
+
+  ((complete :accessor complete
+
+             :initform 
+
+             (c?_
+
+               (every #'(lambda (x) (every #'exact-val 
+x)) (^squares))))
+
+   (squares :accessor squares :initarg :squares))) 
+
+(defmethod print-object ((self board) out)
+
+  (dotimes (r *col-len*)
+
+    (dotimes (c *row-len*)
+
+      (format out "~a " (exact-val (at (^squares) r c))))
+
+      (format out "~%")))
+
+Some helper functions to get a value from the board and 
+to find the next position without a value. A position 
+is a list of two numbers: the row and the column.
+
+(defun at (board r c)
+
+  (elt (elt board r) c))
+
+(defun next-pos (pos)
+
+  "next position in the board. search only forward. 
+
+return NIL if the board is finished"
+
+  (destructuring-bind (r c) pos
+
+    (if (= c (1- *row-len*))
+
+        (if (= r (1- *col-len*))
+
+            nil
+
+            (list (1+ r) 0))
+
+        (list r (1+ c)))))
+
+(defun next-to-try (board pos)
+
+  "find next position without a value searching forward.
+
+return NIL if there is none"
+
+  (let ((pos (next-pos pos)))
+
+    (when pos
+
+      (let ((s (at board (first pos) (second pos))))
+
+        (if (exact-val s)
+
+            (next-to-try board pos)
+
+            pos)))))
+
+We create a group for every square. The same square 
+belongs to more than one group. We put in the same 
+group of a certain square all the squares in the same 
+line, in the same column or in the same block.
+
+(defun make-groups (squares)
+
+  (dotimes (r *col-len*)
+
+    (dotimes (c *row-len*)
+
+      (setf (group (at squares r c))
+
+            (make-instance 'square-group
+
+                           :constraining
+
+                           (c-in
+
+                            (delete-duplicates
+
+                             (nconc
+
+                              (nth-col squares c)
+
+                              (nth-row squares r)
+
+                              (nth-block squares r 
+c))))))))) 
+
+(defun nth-row (board n)
+
+  "return row n of board"
+
+  (coerce (elt board n) 'list))
+
+(defun nth-col (board n)
+
+  "return column n of board"
+
+  (map 'list #'(lambda (x) (elt x n)) board))
+
+(defun nth-block (board r c)
+
+  "return list of element in the same block of (at 
+board r c)"
+
+  (let ((upper-left-r (* *sq-size* (floor (/ r *sq-size*))))
+
+        (upper-left-c (* *sq-size* (floor (/ c *sq-size*)))))
+
+    (apply #'concatenate 'list 
+
+           (map 'list #'(lambda (x)
+
+                          (subseq x upper-left-c
+
+                                  (+ upper-left-c *sq-size*)))
+
+                (subseq board upper-left-r 
+
+                        (+ upper-left-r *sq-size*))))))
+
+To create the board we map the input board and for 
+every position we create a square. Then we build all 
+the groups.
+
+(defun make-board (b)
+
+  (let ((b (make-instance 
+
+            'board 
+
+            :squares 
+
+            (c-in
+
+             (map 'vector #'(lambda (x) (map 'vector 
+#'make-square x))  b)))))
+
+    (make-groups (squares b))
+
+    b))
+
+The following code looks for a solution, trying all the 
+possible combinations. Thanks to how we defined 
+possible-vals, impossible combinations are never tried.
+
+(defun search-solution (b &optional (next 
+
+                                     (next-to-try 
+(squares b) (list 0 -1))))
+
+  (if next
+
+      (let ((s (at (squares b) (first next) (second next))))
+
+        (or (some ; find the first of the possible 
+values that yields a solution
+
+             #'(lambda (x)
+
+                 (setf (exact-val s) x) ; try it
+
+                 (search-solution b (next-to-try 
+(squares b) next)))
+
+             (possible-vals s))
+
+            ;; couldn't find any solution: reset the 
+square and return 
+
+            ;; NIL to indicate failure
+
+            (setf (exact-val s) nil)))
+
+      ;; tried all the positions: have we completed the board?
+
+      (complete b)))
+
+Finally the main function: it accepts an input board 
+and prints a solution.
+
+(defun sudoku (the-board)
+
+  (let ((b (make-board the-board)))
+
+    (search-solution b)
+
+    (format t "Solution:~%~a~%" b)))
+
+Save it in a file named "sudoku.lisp" and try it on the 
+empty board:
+
+> (load "sudoku.lisp")
+
+T
+
+> (sudoku *board*)
+
+Solution:
+
+1 2 3 4 5 6 7 8 9
+
+4 5 6 7 8 9 1 2 3
+
+7 8 9 1 2 3 4 5 6
+
+2 1 4 3 6 5 8 9 7
+
+3 6 5 8 9 7 2 1 4
+
+8 9 7 2 1 4 3 6 5
+
+5 3 1 6 4 2 9 7 8
+
+6 4 2 9 7 8 5 3 1
+
+9 7 8 5 3 1 6 4 2 
+
+NIL
+
+It does find a solution, but it takes quite a while to 
+print it:
+
+> (time (sudoku *board*))
+
+Solution:
+
+1 2 3 4 5 6 7 8 9 
+
+4 5 6 7 8 9 1 2 3 
+
+7 8 9 1 2 3 4 5 6 
+
+2 1 4 3 6 5 8 9 7 
+
+3 6 5 8 9 7 2 1 4 
+
+8 9 7 2 1 4 3 6 5 
+
+5 3 1 6 4 2 9 7 8 
+
+6 4 2 9 7 8 5 3 1 
+
+9 7 8 5 3 1 6 4 2
+
+Evaluation took:
+
+  2.476 seconds of real time
+
+  2.388149 seconds of user run time
+
+  0.076004 seconds of system run time
+
+  [Run times include 0.176 seconds GC run time.]
+
+  0 calls to %EVAL
+
+  0 page faults and
+
+  155,622,072 bytes consed.
+
+NIL
+
+It takes 2.4 seconds and it allocates more than 155 MB 
+of memory! We can do better by noticing that when we 
+set exact-val in search-solution the slot possible-vals 
+of every cell in the same group are recomputed, but we 
+don't need all those values immediately, and a lot of 
+them will change again before we will need them. The 
+solution is to use a lazy cell and to do that we change 
+the initform of possible-vals to use c?_ instead of c?. 
+Change it and run the program again:
+
+> (load "sudoku.lisp")
+
+T
+
+> (time (sudoku *board*))
+
+Solution:
+
+1 2 3 4 5 6 7 8 9 
+
+4 5 6 7 8 9 1 2 3 
+
+7 8 9 1 2 3 4 5 6 
+
+2 1 4 3 6 5 8 9 7 
+
+3 6 5 8 9 7 2 1 4 
+
+8 9 7 2 1 4 3 6 5 
+
+5 3 1 6 4 2 9 7 8 
+
+6 4 2 9 7 8 5 3 1 
+
+9 7 8 5 3 1 6 4 2 
+
+Evaluation took:
+
+  0.181 seconds of real time
+
+  0.16001 seconds of user run time
+
+  0.020001 seconds of system run time
+
+  [Run times include 0.012 seconds GC run time.]
+
+  0 calls to %EVAL
+
+  0 page faults and
+
+  9,517,528 bytes consed.
+
+NIL 
+
+Now the speed is much better (more than ten times 
+faster), it allocates only 9.5 MB of memory, and we 
+achieved this result with a really small change.
+
+11 Functions & macros reference
 
 Here follows a quick reference of the main functions 
 and macros.
 
-10.1 Main
+11.1 Main
 
 defmodel
 
@@ -1293,7 +1727,7 @@ I.e. if we are within a ruled cell and <body>
 references a cell slot, when that slot changes the 
 change is not propagated to the ruled cell.
 
-10.2 Family models
+11.2 Family models
 
 The following only works for models that inherit from family.
 
@@ -1392,9 +1826,55 @@ fm-descendant-typed
 (fm-descendant-typed <self> <type>)
 
 (Function) Finds the first descendant of <self> whose 
-type is <type>
+type is <type>.
 
-10.3 Synapses
+container
+
+(container <object>)
+
+(Function) Gets <object>'s parent.
+
+container-typed
+
+(container-typed <object> <type>)
+
+(Function) Gets <object>'s first ancestor of type <type>.
+
+upper
+
+(upper <object> &optional (<type> t))
+
+(Function) Same as (container-typed <object> <type>).
+
+fm-ascendant-typed
+
+(fm-ascendant-typed <parent> <type>)
+
+(Function) Gets the first ancestor of type <type>, 
+searching from <parent> included.
+
+fm-kid-named
+
+(fm-kid-named <self> <name>)
+
+(Function) Gets <self>'s kids whose md-name is <name>.
+
+fm-ascendant-named
+
+(fm-ascendant-named <self> <name>)
+
+(Function) Gets the first ancestor whose md-name is 
+<name> starting from <self> included.
+
+fm-descendant-named
+
+(fm-descendant-named <self> <name> &key (<must-find> t))
+
+(Function) Gets the first successor whose md-name is 
+<name> starting from <self> included. If <must-find> is 
+nil no error is raised if it isn't found.
+
+11.3 Synapses
 
 f-sensitivity
 
@@ -1418,7 +1898,7 @@ changes only when the difference between the value
 returned by <body> and the value it returned the 
 previous time is strictly greater than <sensitivity>. 
 
-10.4 Misc
+11.4 Misc
 
 cells-reset
 
@@ -1426,7 +1906,7 @@ cells-reset
 
 (Function) Resets the system.
 
-11 Other resources
+12 Other resources
 
 This tutorial just scratched the surface of cells. You 
 can find more documentation about cells within the 

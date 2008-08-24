@@ -1115,6 +1115,431 @@ wait-time (2 in this case). Other synapses available are f-delta,
 f-plusp, f-zerop.
 
 
+\section{Example: playing sudoku}
+
+We have seen a few example of using cells, but none of them actually
+did something beside showing cells behavior. Now we will see how to
+use cells to aid us resolving a sudoku puzzle. First of all, some
+constants:
+
+\begin{lyxcode}
+(defparameter~{*}all-values{*}~'(1~2~3~4~5~6~7~8~9))
+
+(defparameter~{*}row-len{*}~9)
+
+(defparameter~{*}sq-size{*}~3)
+
+(defparameter~{*}col-len{*}~9)
+\end{lyxcode}
+The input board is a vector of vectors: every position contains either
+a number from 1 to 9 or a '? telling the program that it must find
+a value to fill in that position. The following is an empty board: 
+
+\begin{lyxcode}
+(defparameter~{*}board{*}~
+
+~~\#(\#(?~?~?~?~?~?~?~?~?)
+
+~~~~\#(?~?~?~?~?~?~?~?~?)
+
+~~~~\#(?~?~?~?~?~?~?~?~?)
+
+~~~~\#(?~?~?~?~?~?~?~?~?)
+
+~~~~\#(?~?~?~?~?~?~?~?~?)
+
+~~~~\#(?~?~?~?~?~?~?~?~?)
+
+~~~~\#(?~?~?~?~?~?~?~?~?)
+
+~~~~\#(?~?~?~?~?~?~?~?~?)
+
+~~~~\#(?~?~?~?~?~?~?~?~?)))
+\end{lyxcode}
+We will represent the playing board with the model board, which has
+two slots: complete is a boolean that tells if every position on the
+board has been filled with a value, and squares is a vector of vectors
+representing the actual board. The slot complete is a lazy cell because
+it is needed rarely and it would be a waste of time to recompute it
+whenever a single square changes. Every square in the board is represented
+by the model square, which has three slots: exact-val holds the actual
+value of the square and it is NIL if the square is empty, possible-vals
+holds a list of the values that the square could assume without conflicting
+with the exact-val of the squares in the same group, and group is
+a reference to an object of type square-group: squares in the same
+group cannot have the same exact-val.
+
+\begin{lyxcode}
+(defmodel~square-group~()
+
+~~((constraining~:initform~(c-in~nil)~:initarg~:constraining
+
+~~~~~~~~~~~~~~~~~:accessor~constraining)))~\\
+~\\
+(defmodel~square~()
+
+~~((group~:accessor~group~:initform~(c-in~nil))
+
+~~~(exact-val~:accessor~exact-val~:initform~(c-in~nil)~:initarg~:exact-val)
+
+~~~(possible-vals~
+
+~~~~:accessor~possible-vals
+
+~~~~:initform~
+
+~~~~(c?
+
+~~~~~~(when~(and~(\textasciicircum{}group)~(not~(\textasciicircum{}exact-val)))
+
+~~~~~~~~(let~((c~(constraining~(\textasciicircum{}group))))
+
+~~~~~~~~~~;;~a~value~must~not~be~the~same~of~the~constraining
+
+~~~~~~~~~~(remove-if-not~
+
+~~~~~~~~~~~\#'(lambda~(v)~
+
+~~~~~~~~~~~~~~~(every~
+
+~~~~~~~~~~~~~~~~\#'(lambda~(x)~
+
+~~~~~~~~~~~~~~~~~~~~(not~(eql~v~(exact-val~x))))
+
+~~~~~~~~~~~~~~~~c))
+
+~~~~~~~~~~~{*}all-values{*})))))))~\\
+~\\
+(defun~make-square~(x)
+
+~~(make-instance~'square~:exact-val~(c-in~(if~(eql~x~'?)~nil~x))))~\\
+~\\
+(defmodel~board~()
+
+~~((complete~:accessor~complete
+
+~~~~~~~~~~~~~:initform~
+
+~~~~~~~~~~~~~(c?\_
+
+~~~~~~~~~~~~~~~(every~\#'(lambda~(x)~(every~\#'exact-val~x))~(\textasciicircum{}squares))))
+
+~~~(squares~:accessor~squares~:initarg~:squares)))~~\\
+~\\
+(defmethod~print-object~((self~board)~out)
+
+~~(dotimes~(r~{*}col-len{*})
+
+~~~~(dotimes~(c~{*}row-len{*})
+
+~~~~~~(format~out~\char`\"{}\textasciitilde{}a~\char`\"{}~(exact-val~(at~(\textasciicircum{}squares)~r~c))))
+
+~~~~~~(format~out~\char`\"{}\textasciitilde{}\%\char`\"{})))
+\end{lyxcode}
+Some helper functions to get a value from the board and to find the
+next position without a value. A position is a list of two numbers:
+the row and the column.
+
+\begin{lyxcode}
+(defun~at~(board~r~c)
+
+~~(elt~(elt~board~r)~c))~\\
+~\\
+(defun~next-pos~(pos)
+
+~~{}``next~position~in~the~board.~search~only~forward.~
+
+return~NIL~if~the~board~is~finished''
+
+~~(destructuring-bind~(r~c)~pos
+
+~~~~(if~(=~c~(1-~{*}row-len{*}))
+
+~~~~~~~~(if~(=~r~(1-~{*}col-len{*}))
+
+~~~~~~~~~~~~nil
+
+~~~~~~~~~~~~(list~(1+~r)~0))
+
+~~~~~~~~(list~r~(1+~c)))))~\\
+~\\
+(defun~next-to-try~(board~pos)
+
+~~{}``find~next~position~without~a~value~searching~forward.
+
+return~NIL~if~there~is~none''
+
+~~(let~((pos~(next-pos~pos)))
+
+~~~~(when~pos
+
+~~~~~~(let~((s~(at~board~(first~pos)~(second~pos))))
+
+~~~~~~~~(if~(exact-val~s)
+
+~~~~~~~~~~~~(next-to-try~board~pos)
+
+~~~~~~~~~~~~pos)))))
+\end{lyxcode}
+We create a group for every square. The same square belongs to more
+than one group. We put in the same group of a certain square all the
+squares in the same line, in the same column or in the same block.
+
+\begin{lyxcode}
+(defun~make-groups~(squares)
+
+~~(dotimes~(r~{*}col-len{*})
+
+~~~~(dotimes~(c~{*}row-len{*})
+
+~~~~~~(setf~(group~(at~squares~r~c))
+
+~~~~~~~~~~~~(make-instance~'square-group
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~:constraining
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~(c-in
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~(delete-duplicates
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~(nconc
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~(nth-col~squares~c)
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~(nth-row~squares~r)
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~(nth-block~squares~r~c)))))))))~~\\
+~\\
+(defun~nth-row~(board~n)
+
+~~\char`\"{}return~row~n~of~board\char`\"{}
+
+~~(coerce~(elt~board~n)~'list))~\\
+~\\
+(defun~nth-col~(board~n)
+
+~~\char`\"{}return~column~n~of~board\char`\"{}
+
+~~(map~'list~\#'(lambda~(x)~(elt~x~n))~board))~\\
+~\\
+(defun~nth-block~(board~r~c)
+
+~~\char`\"{}return~list~of~element~in~the~same~block~of~(at~board~r~c)\char`\"{}
+
+~~(let~((upper-left-r~({*}~{*}sq-size{*}~(floor~(/~r~{*}sq-size{*}))))
+
+~~~~~~~~(upper-left-c~({*}~{*}sq-size{*}~(floor~(/~c~{*}sq-size{*})))))
+
+~~~~(apply~\#'concatenate~'list~
+
+~~~~~~~~~~~(map~'list~\#'(lambda~(x)
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~(subseq~x~upper-left-c
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~(+~upper-left-c~{*}sq-size{*})))
+
+~~~~~~~~~~~~~~~~(subseq~board~upper-left-r~
+
+~~~~~~~~~~~~~~~~~~~~~~~~(+~upper-left-r~{*}sq-size{*}))))))
+\end{lyxcode}
+To create the board we map the input board and for every position
+we create a square. Then we build all the groups.
+
+\begin{lyxcode}
+(defun~make-board~(b)
+
+~~(let~((b~(make-instance~
+
+~~~~~~~~~~~~'board~
+
+~~~~~~~~~~~~:squares~
+
+~~~~~~~~~~~~(c-in
+
+~~~~~~~~~~~~~(map~'vector~\#'(lambda~(x)~(map~'vector~\#'make-square~x))~~b)))))
+
+~~~~(make-groups~(squares~b))
+
+~~~~b))
+\end{lyxcode}
+The following code looks for a solution, trying all the possible combinations.
+Thanks to how we defined possible-vals, impossible combinations are
+never tried.
+
+\begin{lyxcode}
+(defun~search-solution~(b~\&optional~(next~
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~(next-to-try~(squares~b)~(list~0~-1))))
+
+~~(if~next
+
+~~~~~~(let~((s~(at~(squares~b)~(first~next)~(second~next))))
+
+~~~~~~~~(or~(some~;~find~the~first~of~the~possible~values~that~yields~a~solution
+
+~~~~~~~~~~~~~\#'(lambda~(x)
+
+~~~~~~~~~~~~~~~~~(setf~(exact-val~s)~x)~;~try~it
+
+~~~~~~~~~~~~~~~~~(search-solution~b~(next-to-try~(squares~b)~next)))
+
+~~~~~~~~~~~~~(possible-vals~s))
+
+~~~~~~~~~~~~;;~couldn't~find~any~solution:~reset~the~square~and~return~
+
+~~~~~~~~~~~~;;~NIL~to~indicate~failure
+
+~~~~~~~~~~~~(setf~(exact-val~s)~nil)))
+
+~~~~~~;;~tried~all~the~positions:~have~we~completed~the~board?
+
+~~~~~~(complete~b)))
+\end{lyxcode}
+Finally the main function: it accepts an input board and prints a
+solution.
+
+\begin{lyxcode}
+(defun~sudoku~(the-board)
+
+~~(let~((b~(make-board~the-board)))
+
+~~~~(search-solution~b)
+
+~~~~(format~t~\char`\"{}Solution:\textasciitilde{}\%\textasciitilde{}a\textasciitilde{}\%\char`\"{}~b)))
+\end{lyxcode}
+Save it in a file named {}``sudoku.lisp'' and try it on the empty
+board:
+
+\begin{lyxcode}
+>~(load~{}``sudoku.lisp'')
+
+T
+
+>~(sudoku~{*}board{*})
+
+Solution:
+
+1~2~3~4~5~6~7~8~9
+
+4~5~6~7~8~9~1~2~3
+
+7~8~9~1~2~3~4~5~6
+
+2~1~4~3~6~5~8~9~7
+
+3~6~5~8~9~7~2~1~4
+
+8~9~7~2~1~4~3~6~5
+
+5~3~1~6~4~2~9~7~8
+
+6~4~2~9~7~8~5~3~1
+
+9~7~8~5~3~1~6~4~2~
+
+NIL
+\end{lyxcode}
+It does find a solution, but it takes quite a while to print it:
+
+\begin{lyxcode}
+>~(time~(sudoku~{*}board{*}))
+
+Solution:
+
+1~2~3~4~5~6~7~8~9~
+
+4~5~6~7~8~9~1~2~3~
+
+7~8~9~1~2~3~4~5~6~
+
+2~1~4~3~6~5~8~9~7~
+
+3~6~5~8~9~7~2~1~4~
+
+8~9~7~2~1~4~3~6~5~
+
+5~3~1~6~4~2~9~7~8~
+
+6~4~2~9~7~8~5~3~1~
+
+9~7~8~5~3~1~6~4~2~\\
+~\\
+Evaluation~took:
+
+~~2.476~seconds~of~real~time
+
+~~2.388149~seconds~of~user~run~time
+
+~~0.076004~seconds~of~system~run~time
+
+~~{[}Run~times~include~0.176~seconds~GC~run~time.{]}
+
+~~0~calls~to~\%EVAL
+
+~~0~page~faults~and
+
+~~155,622,072~bytes~consed.
+
+NIL
+\end{lyxcode}
+It takes 2.4 seconds and it allocates more than 155 MB of memory!
+We can do better by noticing that when we set exact-val in search-solution
+the slot possible-vals of every cell in the same group are recomputed,
+but we don't need all those values immediately, and a lot of them
+will change again before we will need them. The solution is to use
+a lazy cell and to do that we change the initform of possible-vals
+to use c?\_ instead of c?. Change it and run the program again:
+
+\begin{lyxcode}
+>~(load~{}``sudoku.lisp'')
+
+T
+
+>~(time~(sudoku~{*}board{*}))
+
+Solution:
+
+1~2~3~4~5~6~7~8~9~
+
+4~5~6~7~8~9~1~2~3~
+
+7~8~9~1~2~3~4~5~6~
+
+2~1~4~3~6~5~8~9~7~
+
+3~6~5~8~9~7~2~1~4~
+
+8~9~7~2~1~4~3~6~5~
+
+5~3~1~6~4~2~9~7~8~
+
+6~4~2~9~7~8~5~3~1~
+
+9~7~8~5~3~1~6~4~2~~\\
+~\\
+Evaluation~took:
+
+~~0.181~seconds~of~real~time
+
+~~0.16001~seconds~of~user~run~time
+
+~~0.020001~seconds~of~system~run~time
+
+~~{[}Run~times~include~0.012~seconds~GC~run~time.{]}
+
+~~0~calls~to~\%EVAL
+
+~~0~page~faults~and
+
+~~9,517,528~bytes~consed.
+
+NIL~
+\end{lyxcode}
+Now the speed is much better (more than ten times faster), it allocates
+only 9.5 MB of memory, and we achieved this result with a really small
+change.
+
+
 \section{Functions \& macros reference}
 
 Here follows a quick reference of the main functions and macros.
@@ -1436,7 +1861,67 @@ doesn't search <starting-point> and its children.
 \begin{lyxcode}
 (fm-descendant-typed~<self>~<type>)
 \end{lyxcode}
-(Function) Finds the first descendant of <self> whose type is <type>
+(Function) Finds the first descendant of <self> whose type is <type>.
+
+\begin{lyxlist}{00.00.0000}
+\item [container]~
+\end{lyxlist}
+\begin{lyxcode}
+(container~<object>)
+\end{lyxcode}
+(Function) Gets <object>'s parent.
+
+\begin{lyxlist}{00.00.0000}
+\item [container-typed]~
+\end{lyxlist}
+\begin{lyxcode}
+(container-typed~<object>~<type>)
+\end{lyxcode}
+(Function) Gets <object>'s first ancestor of type <type>.
+
+\begin{lyxlist}{00.00.0000}
+\item [upper]~
+\end{lyxlist}
+\begin{lyxcode}
+(upper~<object>~\&optional~(<type>~t))
+\end{lyxcode}
+(Function) Same as (container-typed <object> <type>).
+
+\begin{lyxlist}{00.00.0000}
+\item [fm-ascendant-typed]~
+\end{lyxlist}
+\begin{lyxcode}
+(fm-ascendant-typed~<parent>~<type>)
+\end{lyxcode}
+(Function) Gets the first ancestor of type <type>, searching from
+<parent> included.
+
+\begin{lyxlist}{00.00.0000}
+\item [fm-kid-named]~
+\end{lyxlist}
+\begin{lyxcode}
+(fm-kid-named~<self>~<name>)
+\end{lyxcode}
+(Function) Gets <self>'s kids whose md-name is <name>.
+
+\begin{lyxlist}{00.00.0000}
+\item [fm-ascendant-named]~
+\end{lyxlist}
+\begin{lyxcode}
+(fm-ascendant-named~<self>~<name>)
+\end{lyxcode}
+(Function) Gets the first ancestor whose md-name is <name> starting
+from <self> included.
+
+\begin{lyxlist}{00.00.0000}
+\item [fm-descendant-named]~
+\end{lyxlist}
+\begin{lyxcode}
+(fm-descendant-named~<self>~<name>~\&key~(<must-find>~t))
+\end{lyxcode}
+(Function) Gets the first successor whose md-name is <name> starting
+from <self> included. If <must-find> is nil no error is raised if
+it isn't found.
 
 
 \subsection{Synapses}

@@ -1721,6 +1721,665 @@ time-elapsed changes only when the accumulated difference is at least wait-time
  Other synapses available are f-delta, f-plusp, f-zerop.
 \layout Section
 
+Example: playing sudoku
+\layout Standard
+
+We have seen a few example of using cells, but none of them actually did
+ something beside showing cells behavior.
+ Now we will see how to use cells to aid us resolving a sudoku puzzle.
+ First of all, some constants:
+\layout LyX-Code
+
+(defparameter *all-values* '(1 2 3 4 5 6 7 8 9))
+\layout LyX-Code
+
+(defparameter *row-len* 9)
+\layout LyX-Code
+
+(defparameter *sq-size* 3)
+\layout LyX-Code
+
+(defparameter *col-len* 9)
+\layout Standard
+
+The input board is a vector of vectors: every position contains either a
+ number from 1 to 9 or a '? telling the program that it must find a value
+ to fill in that position.
+ The following is an empty board: 
+\layout LyX-Code
+
+(defparameter *board* 
+\layout LyX-Code
+
+  #(#(? ? ? ? ? ? ? ? ?)
+\layout LyX-Code
+
+    #(? ? ? ? ? ? ? ? ?)
+\layout LyX-Code
+
+    #(? ? ? ? ? ? ? ? ?)
+\layout LyX-Code
+
+    #(? ? ? ? ? ? ? ? ?)
+\layout LyX-Code
+
+    #(? ? ? ? ? ? ? ? ?)
+\layout LyX-Code
+
+    #(? ? ? ? ? ? ? ? ?)
+\layout LyX-Code
+
+    #(? ? ? ? ? ? ? ? ?)
+\layout LyX-Code
+
+    #(? ? ? ? ? ? ? ? ?)
+\layout LyX-Code
+
+    #(? ? ? ? ? ? ? ? ?)))
+\layout Standard
+
+We will represent the playing board with the model board, which has two
+ slots: complete is a boolean that tells if every position on the board
+ has been filled with a value, and squares is a vector of vectors representing
+ the actual board.
+ The slot complete is a lazy cell because it is needed rarely and it would
+ be a waste of time to recompute it whenever a single square changes.
+ Every square in the board is represented by the model square, which has
+ three slots: exact-val holds the actual value of the square and it is NIL
+ if the square is empty, possible-vals holds a list of the values that the
+ square could assume without conflicting with the exact-val of the squares
+ in the same group, and group is a reference to an object of type square-group:
+ squares in the same group cannot have the same exact-val.
+\layout LyX-Code
+
+(defmodel square-group ()
+\layout LyX-Code
+
+  ((constraining :initform (c-in nil) :initarg :constraining
+\layout LyX-Code
+
+                 :accessor constraining)))
+\newline 
+
+\newline 
+(defmodel square ()
+\layout LyX-Code
+
+  ((group :accessor group :initform (c-in nil))
+\layout LyX-Code
+
+   (exact-val :accessor exact-val :initform (c-in nil) :initarg :exact-val)
+\layout LyX-Code
+
+   (possible-vals 
+\layout LyX-Code
+
+    :accessor possible-vals
+\layout LyX-Code
+
+    :initform 
+\layout LyX-Code
+
+    (c?
+\layout LyX-Code
+
+      (when (and (^group) (not (^exact-val)))
+\layout LyX-Code
+
+        (let ((c (constraining (^group))))
+\layout LyX-Code
+
+          ;; a value must not be the same of the constraining
+\layout LyX-Code
+
+          (remove-if-not 
+\layout LyX-Code
+
+           #'(lambda (v) 
+\layout LyX-Code
+
+               (every 
+\layout LyX-Code
+
+                #'(lambda (x) 
+\layout LyX-Code
+
+                    (not (eql v (exact-val x))))
+\layout LyX-Code
+
+                c))
+\layout LyX-Code
+
+           *all-values*)))))))
+\newline 
+
+\newline 
+(defun make-square (x)
+\layout LyX-Code
+
+  (make-instance 'square :exact-val (c-in (if (eql x '?) nil x))))
+\newline 
+
+\newline 
+(defmodel board ()
+\layout LyX-Code
+
+  ((complete :accessor complete
+\layout LyX-Code
+
+             :initform 
+\layout LyX-Code
+
+             (c?_
+\layout LyX-Code
+
+               (every #'(lambda (x) (every #'exact-val x)) (^squares))))
+\layout LyX-Code
+
+   (squares :accessor squares :initarg :squares))) 
+\newline 
+
+\newline 
+(defmethod print-object ((self board) out)
+\layout LyX-Code
+
+  (dotimes (r *col-len*)
+\layout LyX-Code
+
+    (dotimes (c *row-len*)
+\layout LyX-Code
+
+      (format out "~a " (exact-val (at (^squares) r c))))
+\layout LyX-Code
+
+      (format out "~%")))
+\layout Standard
+
+Some helper functions to get a value from the board and to find the next
+ position without a value.
+ A position is a list of two numbers: the row and the column.
+\layout LyX-Code
+
+(defun at (board r c)
+\layout LyX-Code
+
+  (elt (elt board r) c))
+\newline 
+
+\newline 
+(defun next-pos (pos)
+\layout LyX-Code
+
+  
+\begin_inset Quotes eld
+\end_inset 
+
+next position in the board.
+ search only forward.
+ 
+\layout LyX-Code
+
+return NIL if the board is finished
+\begin_inset Quotes erd
+\end_inset 
+
+
+\layout LyX-Code
+
+  (destructuring-bind (r c) pos
+\layout LyX-Code
+
+    (if (= c (1- *row-len*))
+\layout LyX-Code
+
+        (if (= r (1- *col-len*))
+\layout LyX-Code
+
+            nil
+\layout LyX-Code
+
+            (list (1+ r) 0))
+\layout LyX-Code
+
+        (list r (1+ c)))))
+\newline 
+
+\newline 
+(defun next-to-try (board pos)
+\layout LyX-Code
+
+  
+\begin_inset Quotes eld
+\end_inset 
+
+find next position without a value searching forward.
+\layout LyX-Code
+
+return NIL if there is none
+\begin_inset Quotes erd
+\end_inset 
+
+
+\layout LyX-Code
+
+  (let ((pos (next-pos pos)))
+\layout LyX-Code
+
+    (when pos
+\layout LyX-Code
+
+      (let ((s (at board (first pos) (second pos))))
+\layout LyX-Code
+
+        (if (exact-val s)
+\layout LyX-Code
+
+            (next-to-try board pos)
+\layout LyX-Code
+
+            pos)))))
+\layout Standard
+
+We create a group for every square.
+ The same square belongs to more than one group.
+ We put in the same group of a certain square all the squares in the same
+ line, in the same column or in the same block.
+\layout LyX-Code
+
+(defun make-groups (squares)
+\layout LyX-Code
+
+  (dotimes (r *col-len*)
+\layout LyX-Code
+
+    (dotimes (c *row-len*)
+\layout LyX-Code
+
+      (setf (group (at squares r c))
+\layout LyX-Code
+
+            (make-instance 'square-group
+\layout LyX-Code
+
+                           :constraining
+\layout LyX-Code
+
+                           (c-in
+\layout LyX-Code
+
+                            (delete-duplicates
+\layout LyX-Code
+
+                             (nconc
+\layout LyX-Code
+
+                              (nth-col squares c)
+\layout LyX-Code
+
+                              (nth-row squares r)
+\layout LyX-Code
+
+                              (nth-block squares r c))))))))) 
+\newline 
+
+\newline 
+(defun nth-row (board n)
+\layout LyX-Code
+
+  "return row n of board"
+\layout LyX-Code
+
+  (coerce (elt board n) 'list))
+\newline 
+
+\newline 
+(defun nth-col (board n)
+\layout LyX-Code
+
+  "return column n of board"
+\layout LyX-Code
+
+  (map 'list #'(lambda (x) (elt x n)) board))
+\newline 
+
+\newline 
+(defun nth-block (board r c)
+\layout LyX-Code
+
+  "return list of element in the same block of (at board r c)"
+\layout LyX-Code
+
+  (let ((upper-left-r (* *sq-size* (floor (/ r *sq-size*))))
+\layout LyX-Code
+
+        (upper-left-c (* *sq-size* (floor (/ c *sq-size*)))))
+\layout LyX-Code
+
+    (apply #'concatenate 'list 
+\layout LyX-Code
+
+           (map 'list #'(lambda (x)
+\layout LyX-Code
+
+                          (subseq x upper-left-c
+\layout LyX-Code
+
+                                  (+ upper-left-c *sq-size*)))
+\layout LyX-Code
+
+                (subseq board upper-left-r 
+\layout LyX-Code
+
+                        (+ upper-left-r *sq-size*))))))
+\layout Standard
+
+To create the board we map the input board and for every position we create
+ a square.
+ Then we build all the groups.
+\layout LyX-Code
+
+(defun make-board (b)
+\layout LyX-Code
+
+  (let ((b (make-instance 
+\layout LyX-Code
+
+            'board 
+\layout LyX-Code
+
+            :squares 
+\layout LyX-Code
+
+            (c-in
+\layout LyX-Code
+
+             (map 'vector #'(lambda (x) (map 'vector #'make-square x)) 
+ b)))))
+\layout LyX-Code
+
+    (make-groups (squares b))
+\layout LyX-Code
+
+    b))
+\layout Standard
+
+The following code looks for a solution, trying all the possible combinations.
+ Thanks to how we defined possible-vals, impossible combinations are never
+ tried.
+\layout LyX-Code
+
+(defun search-solution (b &optional (next 
+\layout LyX-Code
+
+                                     (next-to-try (squares b) (list 0 -1))))
+\layout LyX-Code
+
+  (if next
+\layout LyX-Code
+
+      (let ((s (at (squares b) (first next) (second next))))
+\layout LyX-Code
+
+        (or (some ; find the first of the possible values that yields a
+ solution
+\layout LyX-Code
+
+             #'(lambda (x)
+\layout LyX-Code
+
+                 (setf (exact-val s) x) ; try it
+\layout LyX-Code
+
+                 (search-solution b (next-to-try (squares b) next)))
+\layout LyX-Code
+
+             (possible-vals s))
+\layout LyX-Code
+
+            ;; couldn't find any solution: reset the square and return 
+\layout LyX-Code
+
+            ;; NIL to indicate failure
+\layout LyX-Code
+
+            (setf (exact-val s) nil)))
+\layout LyX-Code
+
+      ;; tried all the positions: have we completed the board?
+\layout LyX-Code
+
+      (complete b)))
+\layout Standard
+
+Finally the main function: it accepts an input board and prints a solution.
+\layout LyX-Code
+
+(defun sudoku (the-board)
+\layout LyX-Code
+
+  (let ((b (make-board the-board)))
+\layout LyX-Code
+
+    (search-solution b)
+\layout LyX-Code
+
+    (format t "Solution:~%~a~%" b)))
+\layout Standard
+
+Save it in a file named 
+\begin_inset Quotes eld
+\end_inset 
+
+sudoku.lisp
+\begin_inset Quotes erd
+\end_inset 
+
+ and try it on the empty board:
+\layout LyX-Code
+
+> (load 
+\begin_inset Quotes eld
+\end_inset 
+
+sudoku.lisp
+\begin_inset Quotes erd
+\end_inset 
+
+)
+\layout LyX-Code
+
+T
+\layout LyX-Code
+
+> (sudoku *board*)
+\layout LyX-Code
+
+Solution:
+\layout LyX-Code
+
+1 2 3 4 5 6 7 8 9
+\layout LyX-Code
+
+4 5 6 7 8 9 1 2 3
+\layout LyX-Code
+
+7 8 9 1 2 3 4 5 6
+\layout LyX-Code
+
+2 1 4 3 6 5 8 9 7
+\layout LyX-Code
+
+3 6 5 8 9 7 2 1 4
+\layout LyX-Code
+
+8 9 7 2 1 4 3 6 5
+\layout LyX-Code
+
+5 3 1 6 4 2 9 7 8
+\layout LyX-Code
+
+6 4 2 9 7 8 5 3 1
+\layout LyX-Code
+
+9 7 8 5 3 1 6 4 2 
+\layout LyX-Code
+
+NIL
+\layout Standard
+
+It does find a solution, but it takes quite a while to print it:
+\layout LyX-Code
+
+> (time (sudoku *board*))
+\layout LyX-Code
+
+Solution:
+\layout LyX-Code
+
+1 2 3 4 5 6 7 8 9 
+\layout LyX-Code
+
+4 5 6 7 8 9 1 2 3 
+\layout LyX-Code
+
+7 8 9 1 2 3 4 5 6 
+\layout LyX-Code
+
+2 1 4 3 6 5 8 9 7 
+\layout LyX-Code
+
+3 6 5 8 9 7 2 1 4 
+\layout LyX-Code
+
+8 9 7 2 1 4 3 6 5 
+\layout LyX-Code
+
+5 3 1 6 4 2 9 7 8 
+\layout LyX-Code
+
+6 4 2 9 7 8 5 3 1 
+\layout LyX-Code
+
+9 7 8 5 3 1 6 4 2
+\newline 
+
+\newline 
+Evaluation took:
+\layout LyX-Code
+
+  2.476 seconds of real time
+\layout LyX-Code
+
+  2.388149 seconds of user run time
+\layout LyX-Code
+
+  0.076004 seconds of system run time
+\layout LyX-Code
+
+  [Run times include 0.176 seconds GC run time.]
+\layout LyX-Code
+
+  0 calls to %EVAL
+\layout LyX-Code
+
+  0 page faults and
+\layout LyX-Code
+
+  155,622,072 bytes consed.
+\layout LyX-Code
+
+NIL
+\layout Standard
+
+It takes 2.4 seconds and it allocates more than 155 MB of memory! We can
+ do better by noticing that when we set exact-val in search-solution the
+ slot possible-vals of every cell in the same group are recomputed, but
+ we don't need all those values immediately, and a lot of them will change
+ again before we will need them.
+ The solution is to use a lazy cell and to do that we change the initform
+ of possible-vals to use c?_ instead of c?.
+ Change it and run the program again:
+\layout LyX-Code
+
+> (load 
+\begin_inset Quotes eld
+\end_inset 
+
+sudoku.lisp
+\begin_inset Quotes erd
+\end_inset 
+
+)
+\layout LyX-Code
+
+T
+\layout LyX-Code
+
+> (time (sudoku *board*))
+\layout LyX-Code
+
+Solution:
+\layout LyX-Code
+
+1 2 3 4 5 6 7 8 9 
+\layout LyX-Code
+
+4 5 6 7 8 9 1 2 3 
+\layout LyX-Code
+
+7 8 9 1 2 3 4 5 6 
+\layout LyX-Code
+
+2 1 4 3 6 5 8 9 7 
+\layout LyX-Code
+
+3 6 5 8 9 7 2 1 4 
+\layout LyX-Code
+
+8 9 7 2 1 4 3 6 5 
+\layout LyX-Code
+
+5 3 1 6 4 2 9 7 8 
+\layout LyX-Code
+
+6 4 2 9 7 8 5 3 1 
+\layout LyX-Code
+
+9 7 8 5 3 1 6 4 2 
+\newline 
+
+\newline 
+Evaluation took:
+\layout LyX-Code
+
+  0.181 seconds of real time
+\layout LyX-Code
+
+  0.16001 seconds of user run time
+\layout LyX-Code
+
+  0.020001 seconds of system run time
+\layout LyX-Code
+
+  [Run times include 0.012 seconds GC run time.]
+\layout LyX-Code
+
+  0 calls to %EVAL
+\layout LyX-Code
+
+  0 page faults and
+\layout LyX-Code
+
+  9,517,528 bytes consed.
+\layout LyX-Code
+
+NIL 
+\layout Standard
+
+Now the speed is much better (more than ten times faster), it allocates
+ only 9.5 MB of memory, and we achieved this result with a really small change.
+\layout Section
+
 Functions & macros reference
 \layout Standard
 
@@ -2137,7 +2796,81 @@ fm-descendant-typed
 (fm-descendant-typed <self> <type>)
 \layout Standard
 
-(Function) Finds the first descendant of <self> whose type is <type>
+(Function) Finds the first descendant of <self> whose type is <type>.
+\layout List
+\labelwidthstring 00.00.0000
+
+container
+\layout LyX-Code
+
+(container <object>)
+\layout Standard
+
+(Function) Gets <object>'s parent.
+\layout List
+\labelwidthstring 00.00.0000
+
+container-typed
+\layout LyX-Code
+
+(container-typed <object> <type>)
+\layout Standard
+
+(Function) Gets <object>'s first ancestor of type <type>.
+\layout List
+\labelwidthstring 00.00.0000
+
+upper
+\layout LyX-Code
+
+(upper <object> &optional (<type> t))
+\layout Standard
+
+(Function) Same as (container-typed <object> <type>).
+\layout List
+\labelwidthstring 00.00.0000
+
+fm-ascendant-typed
+\layout LyX-Code
+
+(fm-ascendant-typed <parent> <type>)
+\layout Standard
+
+(Function) Gets the first ancestor of type <type>, searching from <parent>
+ included.
+\layout List
+\labelwidthstring 00.00.0000
+
+fm-kid-named
+\layout LyX-Code
+
+(fm-kid-named <self> <name>)
+\layout Standard
+
+(Function) Gets <self>'s kids whose md-name is <name>.
+\layout List
+\labelwidthstring 00.00.0000
+
+fm-ascendant-named
+\layout LyX-Code
+
+(fm-ascendant-named <self> <name>)
+\layout Standard
+
+(Function) Gets the first ancestor whose md-name is <name> starting from
+ <self> included.
+\layout List
+\labelwidthstring 00.00.0000
+
+fm-descendant-named
+\layout LyX-Code
+
+(fm-descendant-named <self> <name> &key (<must-find> t))
+\layout Standard
+
+(Function) Gets the first successor whose md-name is <name> starting from
+ <self> included.
+ If <must-find> is nil no error is raised if it isn't found.
 \layout Subsection
 
 Synapses
