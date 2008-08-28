@@ -14,6 +14,8 @@ Cells tutorial
 7 Drifters
 8 Cyclic dependencies
 9 Synapses
+    9.1 Built-in synapses
+    9.2 Defining your own
 10 Example: playing sudoku
 11 Functions & macros reference
     11.1 Main
@@ -21,8 +23,14 @@ Cells tutorial
     11.3 Synapses
     11.4 Misc
 12 Other resources
+13 Introduction
+    13.1 Where's the GUI?
+    13.2 Cells-gtk
+14 Installation
 
 
+
+Cells
 
 1 Introduction
 
@@ -999,6 +1007,8 @@ NIL
 
 9 Synapses
 
+9.1 Built-in synapses
+
 Suppose that you have a cell A that depends on another 
 cell B, but you want A to change only when B changes by 
 an amount over a given threshold, maybe because B 
@@ -1113,6 +1123,132 @@ NIL
 time-elapsed changes only when the accumulated 
 difference is at least wait-time (2 in this case). 
 Other synapses available are f-delta, f-plusp, f-zerop.
+
+9.2 Defining your own
+
+As it frequently happens, you may need a type of 
+synapse that is not available. In this case, you can 
+define your own synapses using the construct with-synapse.
+
+(with-synapse <id> (&rest <vars>)
+
+  <body>)
+
+<vars> is a valid variable declaration list such as 
+that of the let form. These variables are created and 
+initialized the first time <body> is executed, and they 
+retain their value from call to call, so that you can 
+use them to carry state between different 
+re-evaluations of <body>. <body> should return two 
+values: the value to return and one keyword out of 
+:propagate and :no-propagate to indicate if the value 
+should be propagated or not. For example, we could have 
+a ruled cell that propagates only when another cell is odd:
+
+(defmodel my-syn-test ()
+
+  ((num :accessor num :initform (c-in 0))
+
+   (odd-num :reader odd-num
+
+            :initform (c?
+
+                        (with-synapse :odd-syn ()
+
+                          (if (oddp (^num))
+
+                              (values (^num) :propagate))
+
+                              (values nil :no-propagate)))))))
+
+(defobserver odd-num ()
+
+  (when old-value-boundp
+
+    (format t "Propagated!~%")))
+
+(defun try-my-syn ()
+
+  (let ((m (make-instance 'my-syn-test)))
+
+    (dolist (n '(1 2 4 5 7 11 12 14 16 15))
+
+      (format t "Setting num to ~a~%" n)
+
+      (setf (num m) n)
+
+      (format t "odd-num is ~a~%" (odd-num m)))))
+
+The crucial part is the values returned by 
+with-synapse's body. When num is odd, we return it 
+together with :propagate, otherwise we return a value 
+that will be ignored (because it won't be propagated) 
+and :no-propagate. Here is the output:
+
+> (load "hello-cells.lisp")
+
+T
+
+> (try-my-syn)
+
+Setting num to 1
+
+Propagated!
+
+odd-num is 1
+
+Setting num to 2
+
+odd-num is 1
+
+Setting num to 4
+
+odd-num is 1
+
+Setting num to 5
+
+Propagated!
+
+odd-num is 5
+
+Setting num to 7
+
+Propagated!
+
+odd-num is 7
+
+Setting num to 11
+
+Propagated!
+
+odd-num is 11
+
+Setting num to 12
+
+odd-num is 11
+
+Setting num to 14
+
+odd-num is 11
+
+Setting num to 16
+
+odd-num is 11
+
+Setting num to 15
+
+Propagated!
+
+odd-num is 15
+
+NIL 
+
+You can see that odd-num changes only when we return :propagateWe could have returned any other value. The only 
+requirement to propagate is to return something 
+different from :no-propagate. 
+. When we return :no-propagate odd-num doesn't change. 
+We didn't need to carry some state between different 
+executions of the body, so we left the <vars> list empty.
 
 10 Example: playing sudoku
 
@@ -1547,6 +1683,18 @@ Now the speed is much better (more than ten times
 faster), it allocates only 9.5 MB of memory, and we 
 achieved this result with a really small change.
 
+One important thing to note about this example is that 
+we had to write the function search-solution to solve 
+the puzzle, because cells has no constraints resolution 
+engine. What it does is to propagate change to 
+dependent slots. We used this feature to keep the board 
+in a consistent state and to roll out impossible 
+combinations while searching for a solution, without 
+having to worry about dependencies. This way the 
+searching function has been quite simple to write, 
+because all the relations between different squares 
+were managed automatically by the models we defined earlier.
+
 11 Functions & macros reference
 
 Here follows a quick reference of the main functions 
@@ -1680,12 +1828,6 @@ that behaves like a cell initialized with both c? and
 c-in. Another useful option is :lazy that lets you 
 specify the laziness of the cell: nil, t, :once-asked, 
 :until-asked or :always.
-
-not-to-be
-
-(not-to-be <object>)
-
-(Function) Tells cells to stop handling <object>.
 
 defobserver
 
@@ -1874,6 +2016,12 @@ fm-descendant-named
 <name> starting from <self> included. If <must-find> is 
 nil no error is raised if it isn't found.
 
+not-to-be
+
+(not-to-be <object>)
+
+(Function) Unregisters <object>.
+
 11.3 Synapses
 
 f-sensitivity
@@ -1898,6 +2046,16 @@ changes only when the difference between the value
 returned by <body> and the value it returned the 
 previous time is strictly greater than <sensitivity>. 
 
+with-synapse
+
+(with-synapse <syn-id> (<vars>)
+
+  <body>)
+
+(Macro) Creates a synapse. <body> should return two 
+multiple values, and when the second is :no-propagate, 
+the eventual change isn't propagated.
+
 11.4 Misc
 
 cells-reset
@@ -1916,3 +2074,74 @@ the source files within the directories 'cells-test',
 can be found in the file cells-manifesto.txt in the 
 source tarball. You can also ask questions about cells 
 on the project's mailing list: [http://common-lisp.net/cgi-bin/mailman/subscribe/cells-devel]
+
+Cells-gtk
+
+13 Introduction
+
+13.1 Where's the GUI?
+
+One classic question that a Common Lisp newcomer asks 
+is what are the libraries available to build graphical 
+interfaces. Some typical answers he/she would get are 
+the following:
+
+1. Use a commercial implementation. Commercial 
+  implementations such as Allegro or LispWorks comes 
+  with portable, stable and well documented GUI 
+  libraries. The drawbacks are that you would be locked 
+  with a particular vendor and that you should pay for 
+  them. Depending on your particular situation, this 
+  may or may not be a good choice.
+
+2. No one uses GUI applications anymore. Web interfaces 
+  are the new GUI. Given that there are really good 
+  frameworks for web programming available for Common 
+  Lisp, this is not the answer you were looking for.
+
+3. McCLIM. Once upon a time (end of the 80s), CLIM was 
+  the standard way to do graphical applications with 
+  Common Lisp. McCLIM is an open source project that 
+  implements almost the entire CLIM standard. The 
+  default CLIM look-and-feel is quite old-fashionedThere are ongoing efforts to use GTK and Cairo to bring 
+to McCLIM a modern look.
+  , and interfaces built with it are fundamentally 
+  different from the standard widget-oriented way of 
+  doing GUIs this days, so it may not be what you 
+  really want. The biggest problem, though, is that 
+  CLIM is very complicated, and there is very little 
+  documentation to help you in the learning process.
+
+4. LTK, a port to Common Lisp of Tcl's Tk library. 
+  Light, stable, cross-platform and now good looking 
+  thanks to the 8.5 release of Tk.
+
+5. Cells-inside GUI toolkits. These libraries use cells 
+  to let you easily build graphical applications. You 
+  can choose between celtk (based on Tk), cello (based 
+  on OpenGL) and cells-gtk, that uses GTK as the 
+  backend. The rest of this tutorial covers cells-gtk.
+
+13.2 Cells-gtk
+
+Cells-gtk is not a direct wrapper of the gtk+ API, 
+instead it uses gtk+ just as a backend and offers a 
+very high-level API to the programmer. Every widget is 
+a model that inherits from family, so everything we 
+have already seen about cells and the family model 
+applies to widgets. The family tree mimics the 
+graphical objects' hierarchy that the user sees, and 
+properties of the widgets can be initialized to any 
+type of cell. It is quite usual, for example, to make 
+properties that give some kind of information to the 
+user (such as list views or a progress bar) be ruled 
+cells, and properties of widgets that the user can 
+modify (such as the text of an entry or the state of a 
+radio group) be input cells. The cells-gtk programmer 
+makes a parsimonious use of event handlers, because 
+most of the work that is usually done within an event 
+handler in more traditional toolkits can be done in a 
+more concise and localized way using ruled cells, input 
+cells and observers.
+
+14 Installation

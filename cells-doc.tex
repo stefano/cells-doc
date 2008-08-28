@@ -42,6 +42,9 @@
 \tableofcontents{}
 
 
+\part{Cells}
+
+
 \section{Introduction}
 
 
@@ -1001,6 +1004,9 @@ NIL
 
 \section{Synapses}
 
+
+\subsection{Built-in synapses}
+
 Suppose that you have a cell A that depends on another cell B, but
 you want A to change only when B changes by an amount over a given
 threshold, maybe because B receives data from an external probe and
@@ -1113,6 +1119,133 @@ NIL
 time-elapsed changes only when the accumulated difference is at least
 wait-time (2 in this case). Other synapses available are f-delta,
 f-plusp, f-zerop.
+
+
+\subsection{Defining your own}
+
+As it frequently happens, you may need a type of synapse that is not
+available. In this case, you can define your own synapses using the
+construct with-synapse.
+
+\begin{lyxcode}
+(with-synapse~<id>~(\&rest~<vars>)
+
+~~<body>)
+\end{lyxcode}
+<vars> is a valid variable declaration list such as that of the let
+form. These variables are created and initialized the first time <body>
+is executed, and they retain their value from call to call, so that
+you can use them to carry state between different re-evaluations of
+<body>. <body> should return two values: the value to return and one
+keyword out of :propagate and :no-propagate to indicate if the value
+should be propagated or not. For example, we could have a ruled cell
+that propagates only when another cell is odd:
+
+\begin{lyxcode}
+(defmodel~my-syn-test~()
+
+~~((num~:accessor~num~:initform~(c-in~0))
+
+~~~(odd-num~:reader~odd-num
+
+~~~~~~~~~~~~:initform~(c?
+
+~~~~~~~~~~~~~~~~~~~~~~~~(with-synapse~:odd-syn~()
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~(if~(oddp~(\textasciicircum{}num))
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~(values~(\textasciicircum{}num)~:propagate))
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~(values~nil~:no-propagate)))))))~\\
+~\\
+(defobserver~odd-num~()
+
+~~(when~old-value-boundp
+
+~~~~(format~t~\char`\"{}Propagated!\textasciitilde{}\%\char`\"{})))~\\
+~\\
+(defun~try-my-syn~()
+
+~~(let~((m~(make-instance~'my-syn-test)))
+
+~~~~(dolist~(n~'(1~2~4~5~7~11~12~14~16~15))
+
+~~~~~~(format~t~\char`\"{}Setting~num~to~\textasciitilde{}a\textasciitilde{}\%\char`\"{}~n)
+
+~~~~~~(setf~(num~m)~n)
+
+~~~~~~(format~t~\char`\"{}odd-num~is~\textasciitilde{}a\textasciitilde{}\%\char`\"{}~(odd-num~m)))))
+\end{lyxcode}
+The crucial part is the values returned by with-synapse's body. When
+num is odd, we return it together with :propagate, otherwise we return
+a value that will be ignored (because it won't be propagated) and
+:no-propagate. Here is the output:
+
+\begin{lyxcode}
+>~(load~{}``hello-cells.lisp'')
+
+T
+
+>~(try-my-syn)
+
+Setting~num~to~1
+
+Propagated!
+
+odd-num~is~1
+
+Setting~num~to~2
+
+odd-num~is~1
+
+Setting~num~to~4
+
+odd-num~is~1
+
+Setting~num~to~5
+
+Propagated!
+
+odd-num~is~5
+
+Setting~num~to~7
+
+Propagated!
+
+odd-num~is~7
+
+Setting~num~to~11
+
+Propagated!
+
+odd-num~is~11
+
+Setting~num~to~12
+
+odd-num~is~11
+
+Setting~num~to~14
+
+odd-num~is~11
+
+Setting~num~to~16
+
+odd-num~is~11
+
+Setting~num~to~15
+
+Propagated!
+
+odd-num~is~15
+
+NIL~
+\end{lyxcode}
+You can see that odd-num changes only when we return :propagate%
+\footnote{We could have returned any other value. The only requirement to propagate
+is to return something different from :no-propagate. %
+}. When we return :no-propagate odd-num doesn't change. We didn't need
+to carry some state between different executions of the body, so we
+left the <vars> list empty.
 
 
 \section{Example: playing sudoku}
@@ -1539,6 +1672,16 @@ Now the speed is much better (more than ten times faster), it allocates
 only 9.5 MB of memory, and we achieved this result with a really small
 change.
 
+One important thing to note about this example is that we \emph{had}
+to write the function search-solution to solve the puzzle, because
+cells has no constraints resolution engine. What it does is to propagate
+change to dependent slots. We used this feature to keep the board
+in a consistent state and to roll out impossible combinations while
+searching for a solution, without having to worry about dependencies.
+This way the searching function has been quite simple to write, because
+all the relations between different squares were managed automatically
+by the models we defined earlier.
+
 
 \section{Functions \& macros reference}
 
@@ -1688,14 +1831,6 @@ the option :inputp lets you build a cell that behaves like a cell
 initialized with both c? and c-in. Another useful option is :lazy
 that lets you specify the laziness of the cell: nil, t, :once-asked,
 :until-asked or :always.
-
-\begin{lyxlist}{00.00.0000}
-\item [not-to-be]~
-\end{lyxlist}
-\begin{lyxcode}
-(not-to-be~<object>)
-\end{lyxcode}
-(Function) Tells cells to stop handling <object>.
 
 \begin{lyxlist}{00.00.0000}
 \item [defobserver]~
@@ -1923,6 +2058,14 @@ from <self> included.
 from <self> included. If <must-find> is nil no error is raised if
 it isn't found.
 
+\begin{lyxlist}{00.00.0000}
+\item [not-to-be]~
+\end{lyxlist}
+\begin{lyxcode}
+(not-to-be~<object>)
+\end{lyxcode}
+(Function) Unregisters <object>.
+
 
 \subsection{Synapses}
 
@@ -1950,6 +2093,17 @@ from the value it had the last time it propagated.
 when the difference between the value returned by <body> and the value
 it returned the previous time is strictly greater than <sensitivity>. 
 
+\begin{lyxlist}{00.00.0000}
+\item [with-synapse]~
+\end{lyxlist}
+\begin{lyxcode}
+(with-synapse~<syn-id>~(<vars>)
+
+~~<body>)
+\end{lyxcode}
+(Macro) Creates a synapse. <body> should return two multiple values,
+and when the second is :no-propagate, the eventual change isn't propagated.
+
 
 \subsection{Misc}
 
@@ -1970,4 +2124,65 @@ tarball or by looking at the source files within the directories 'cells-test',
 'tutorial' and 'Use Cases'. A general overview of cells can be found
 in the file cells-manifesto.txt in the source tarball. You can also
 ask questions about cells on the project's mailing list: \url{http://common-lisp.net/cgi-bin/mailman/subscribe/cells-devel}
+
+
+\part{Cells-gtk}
+
+
+\section{Introduction}
+
+
+\subsection{Where's the GUI?}
+
+One classic question that a Common Lisp newcomer asks is what are
+the libraries available to build graphical interfaces. Some typical
+answers he/she would get are the following:
+
+\begin{enumerate}
+\item Use a commercial implementation. Commercial implementations such as
+Allegro or LispWorks comes with portable, stable and well documented
+GUI libraries. The drawbacks are that you would be locked with a particular
+vendor and that you should pay for them. Depending on your particular
+situation, this may or may not be a good choice.
+\item No one uses GUI applications anymore. Web interfaces are the new GUI.
+Given that there are really good frameworks for web programming available
+for Common Lisp, this is not the answer you were looking for.
+\item McCLIM. Once upon a time (end of the 80s), CLIM was the standard way
+to do graphical applications with Common Lisp. McCLIM is an open source
+project that implements almost the entire CLIM standard. The default
+CLIM look-and-feel is quite old-fashioned%
+\footnote{There are ongoing efforts to use GTK and Cairo to bring to McCLIM
+a modern look.%
+}, and interfaces built with it are fundamentally different from the
+standard widget-oriented way of doing GUIs this days, so it may not
+be what you really want. The biggest problem, though, is that CLIM
+is \emph{very} complicated, and there is very little documentation
+to help you in the learning process.
+\item LTK, a port to Common Lisp of Tcl's Tk library. Light, stable, cross-platform
+and now good looking thanks to the 8.5 release of Tk.
+\item Cells-inside GUI toolkits. These libraries use cells to let you easily
+build graphical applications. You can choose between celtk (based
+on Tk), cello (based on OpenGL) and cells-gtk, that uses GTK as the
+backend. The rest of this tutorial covers cells-gtk.
+\end{enumerate}
+
+\subsection{Cells-gtk}
+
+Cells-gtk is not a direct wrapper of the gtk+ API, instead it uses
+gtk+ just as a backend and offers a very high-level API to the programmer.
+Every widget is a model that inherits from family, so everything we
+have already seen about cells and the family model applies to widgets.
+The family tree mimics the graphical objects' hierarchy that the user
+sees, and properties of the widgets can be initialized to any type
+of cell. It is quite usual, for example, to make properties that give
+some kind of information to the user (such as list views or a progress
+bar) be ruled cells, and properties of widgets that the user can modify
+(such as the text of an entry or the state of a radio group) be input
+cells. The cells-gtk programmer makes a parsimonious use of event
+handlers, because most of the work that is usually done within an
+event handler in more traditional toolkits can be done in a more concise
+and \emph{localized} way using ruled cells, input cells and observers.
+
+
+\section{Installation}
 \end{document}

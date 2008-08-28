@@ -35,6 +35,9 @@ Cells tutorial
 \end_inset 
 
 
+\layout Part
+
+Cells
 \layout Section
 
 Introduction
@@ -1543,6 +1546,9 @@ NIL
 \layout Section
 
 Synapses
+\layout Subsection
+
+Built-in synapses
 \layout Standard
 
 Suppose that you have a cell A that depends on another cell B, but you want
@@ -1719,6 +1725,202 @@ NIL
 time-elapsed changes only when the accumulated difference is at least wait-time
  (2 in this case).
  Other synapses available are f-delta, f-plusp, f-zerop.
+\layout Subsection
+
+Defining your own
+\layout Standard
+
+As it frequently happens, you may need a type of synapse that is not available.
+ In this case, you can define your own synapses using the construct with-synapse.
+\layout LyX-Code
+
+(with-synapse <id> (&rest <vars>)
+\layout LyX-Code
+
+  <body>)
+\layout Standard
+
+<vars> is a valid variable declaration list such as that of the let form.
+ These variables are created and initialized the first time <body> is executed,
+ and they retain their value from call to call, so that you can use them
+ to carry state between different re-evaluations of <body>.
+ <body> should return two values: the value to return and one keyword out
+ of :propagate and :no-propagate to indicate if the value should be propagated
+ or not.
+ For example, we could have a ruled cell that propagates only when another
+ cell is odd:
+\layout LyX-Code
+
+(defmodel my-syn-test ()
+\layout LyX-Code
+
+  ((num :accessor num :initform (c-in 0))
+\layout LyX-Code
+
+   (odd-num :reader odd-num
+\layout LyX-Code
+
+            :initform (c?
+\layout LyX-Code
+
+                        (with-synapse :odd-syn ()
+\layout LyX-Code
+
+                          (if (oddp (^num))
+\layout LyX-Code
+
+                              (values (^num) :propagate))
+\layout LyX-Code
+
+                              (values nil :no-propagate)))))))
+\newline 
+
+\newline 
+(defobserver odd-num ()
+\layout LyX-Code
+
+  (when old-value-boundp
+\layout LyX-Code
+
+    (format t "Propagated!~%")))
+\newline 
+
+\newline 
+(defun try-my-syn ()
+\layout LyX-Code
+
+  (let ((m (make-instance 'my-syn-test)))
+\layout LyX-Code
+
+    (dolist (n '(1 2 4 5 7 11 12 14 16 15))
+\layout LyX-Code
+
+      (format t "Setting num to ~a~%" n)
+\layout LyX-Code
+
+      (setf (num m) n)
+\layout LyX-Code
+
+      (format t "odd-num is ~a~%" (odd-num m)))))
+\layout Standard
+
+The crucial part is the values returned by with-synapse's body.
+ When num is odd, we return it together with :propagate, otherwise we return
+ a value that will be ignored (because it won't be propagated) and :no-propagate.
+ Here is the output:
+\layout LyX-Code
+
+> (load 
+\begin_inset Quotes eld
+\end_inset 
+
+hello-cells.lisp
+\begin_inset Quotes erd
+\end_inset 
+
+)
+\layout LyX-Code
+
+T
+\layout LyX-Code
+
+> (try-my-syn)
+\layout LyX-Code
+
+Setting num to 1
+\layout LyX-Code
+
+Propagated!
+\layout LyX-Code
+
+odd-num is 1
+\layout LyX-Code
+
+Setting num to 2
+\layout LyX-Code
+
+odd-num is 1
+\layout LyX-Code
+
+Setting num to 4
+\layout LyX-Code
+
+odd-num is 1
+\layout LyX-Code
+
+Setting num to 5
+\layout LyX-Code
+
+Propagated!
+\layout LyX-Code
+
+odd-num is 5
+\layout LyX-Code
+
+Setting num to 7
+\layout LyX-Code
+
+Propagated!
+\layout LyX-Code
+
+odd-num is 7
+\layout LyX-Code
+
+Setting num to 11
+\layout LyX-Code
+
+Propagated!
+\layout LyX-Code
+
+odd-num is 11
+\layout LyX-Code
+
+Setting num to 12
+\layout LyX-Code
+
+odd-num is 11
+\layout LyX-Code
+
+Setting num to 14
+\layout LyX-Code
+
+odd-num is 11
+\layout LyX-Code
+
+Setting num to 16
+\layout LyX-Code
+
+odd-num is 11
+\layout LyX-Code
+
+Setting num to 15
+\layout LyX-Code
+
+Propagated!
+\layout LyX-Code
+
+odd-num is 15
+\layout LyX-Code
+
+NIL 
+\layout Standard
+
+You can see that odd-num changes only when we return :propagate
+\begin_inset Foot
+collapsed false
+
+\layout Standard
+
+We could have returned any other value.
+ The only requirement to propagate is to return something different from
+ :no-propagate.
+ 
+\end_inset 
+
+.
+ When we return :no-propagate odd-num doesn't change.
+ We didn't need to carry some state between different executions of the
+ body, so we left the <vars> list empty.
 \layout Section
 
 Example: playing sudoku
@@ -2378,6 +2580,21 @@ NIL
 
 Now the speed is much better (more than ten times faster), it allocates
  only 9.5 MB of memory, and we achieved this result with a really small change.
+\layout Standard
+
+One important thing to note about this example is that we 
+\emph on 
+had
+\emph default 
+ to write the function search-solution to solve the puzzle, because cells
+ has no constraints resolution engine.
+ What it does is to propagate change to dependent slots.
+ We used this feature to keep the board in a consistent state and to roll
+ out impossible combinations while searching for a solution, without having
+ to worry about dependencies.
+ This way the searching function has been quite simple to write, because
+ all the relations between different squares were managed automatically
+ by the models we defined earlier.
 \layout Section
 
 Functions & macros reference
@@ -2575,16 +2792,6 @@ c-formula
  a cell initialized with both c? and c-in.
  Another useful option is :lazy that lets you specify the laziness of the
  cell: nil, t, :once-asked, :until-asked or :always.
-\layout List
-\labelwidthstring 00.00.0000
-
-not-to-be
-\layout LyX-Code
-
-(not-to-be <object>)
-\layout Standard
-
-(Function) Tells cells to stop handling <object>.
 \layout List
 \labelwidthstring 00.00.0000
 
@@ -2871,6 +3078,16 @@ fm-descendant-named
 (Function) Gets the first successor whose md-name is <name> starting from
  <self> included.
  If <must-find> is nil no error is raised if it isn't found.
+\layout List
+\labelwidthstring 00.00.0000
+
+not-to-be
+\layout LyX-Code
+
+(not-to-be <object>)
+\layout Standard
+
+(Function) Unregisters <object>.
 \layout Subsection
 
 Synapses
@@ -2905,6 +3122,21 @@ f-delta
  the difference between the value returned by <body> and the value it returned
  the previous time is strictly greater than <sensitivity>.
  
+\layout List
+\labelwidthstring 00.00.0000
+
+with-synapse
+\layout LyX-Code
+
+(with-synapse <syn-id> (<vars>)
+\layout LyX-Code
+
+  <body>)
+\layout Standard
+
+(Macro) Creates a synapse.
+ <body> should return two multiple values, and when the second is :no-propagate,
+ the eventual change isn't propagated.
 \layout Subsection
 
 Misc
@@ -2935,4 +3167,95 @@ This tutorial just scratched the surface of cells.
 \end_inset 
 
 
+\layout Part
+
+Cells-gtk
+\layout Section
+
+Introduction
+\layout Subsection
+
+Where's the GUI?
+\layout Standard
+
+One classic question that a Common Lisp newcomer asks is what are the libraries
+ available to build graphical interfaces.
+ Some typical answers he/she would get are the following:
+\layout Enumerate
+
+Use a commercial implementation.
+ Commercial implementations such as Allegro or LispWorks comes with portable,
+ stable and well documented GUI libraries.
+ The drawbacks are that you would be locked with a particular vendor and
+ that you should pay for them.
+ Depending on your particular situation, this may or may not be a good choice.
+\layout Enumerate
+
+No one uses GUI applications anymore.
+ Web interfaces are the new GUI.
+ Given that there are really good frameworks for web programming available
+ for Common Lisp, this is not the answer you were looking for.
+\layout Enumerate
+
+McCLIM.
+ Once upon a time (end of the 80s), CLIM was the standard way to do graphical
+ applications with Common Lisp.
+ McCLIM is an open source project that implements almost the entire CLIM
+ standard.
+ The default CLIM look-and-feel is quite old-fashioned
+\begin_inset Foot
+collapsed false
+
+\layout Standard
+
+There are ongoing efforts to use GTK and Cairo to bring to McCLIM a modern
+ look.
+\end_inset 
+
+, and interfaces built with it are fundamentally different from the standard
+ widget-oriented way of doing GUIs this days, so it may not be what you
+ really want.
+ The biggest problem, though, is that CLIM is 
+\emph on 
+very 
+\emph default 
+complicated, and there is very little documentation to help you in the learning
+ process.
+\layout Enumerate
+
+LTK, a port to Common Lisp of Tcl's Tk library.
+ Light, stable, cross-platform and now good looking thanks to the 8.5 release
+ of Tk.
+\layout Enumerate
+
+Cells-inside GUI toolkits.
+ These libraries use cells to let you easily build graphical applications.
+ You can choose between celtk (based on Tk), cello (based on OpenGL) and
+ cells-gtk, that uses GTK as the backend.
+ The rest of this tutorial covers cells-gtk.
+\layout Subsection
+
+Cells-gtk
+\layout Standard
+
+Cells-gtk is not a direct wrapper of the gtk+ API, instead it uses gtk+
+ just as a backend and offers a very high-level API to the programmer.
+ Every widget is a model that inherits from family, so everything we have
+ already seen about cells and the family model applies to widgets.
+ The family tree mimics the graphical objects' hierarchy that the user sees,
+ and properties of the widgets can be initialized to any type of cell.
+ It is quite usual, for example, to make properties that give some kind
+ of information to the user (such as list views or a progress bar) be ruled
+ cells, and properties of widgets that the user can modify (such as the
+ text of an entry or the state of a radio group) be input cells.
+ The cells-gtk programmer makes a parsimonious use of event handlers, because
+ most of the work that is usually done within an event handler in more tradition
+al toolkits can be done in a more concise and 
+\emph on 
+localized
+\emph default 
+ way using ruled cells, input cells and observers.
+\layout Section
+
+Installation
 \the_end
