@@ -2495,10 +2495,10 @@ NIL
 
 It takes 2.4 seconds and it allocates more than 155 MB of memory! We can
  do better by noticing that when we set exact-val in search-solution the
- slot possible-vals of every cell in the same group are recomputed, but
- we don't need all those values immediately, and a lot of them will change
+ slot possible-vals of every cell in the same group is recomputed, but we
+ don't need all those values immediately, and a lot of them will change
  again before we will need them.
- The solution is to use a lazy cell and to do that we change the initform
+ The solution is to use a lazy cell, and to do that we change the initform
  of possible-vals to use c?_ instead of c?.
  Change it and run the program again:
 \layout LyX-Code
@@ -3213,7 +3213,7 @@ There are ongoing efforts to use GTK and Cairo to bring to McCLIM a modern
 \end_inset 
 
 , and interfaces built with it are fundamentally different from the standard
- widget-oriented way of doing GUIs this days, so it may not be what you
+ widget-oriented way of doing GUIs these days, so it may not be what you
  really want.
  The biggest problem, though, is that CLIM is 
 \emph on 
@@ -3258,4 +3258,88 @@ localized
 \layout Section
 
 Installation
+\layout Standard
+
+The installation of cells-gtk is similar to that of cells.
+ Before installing it you will need to install gtk+, a recent version of
+ CFFI and, of course, cells.
+ Before loading cells-gtk with ASDF, you may change its configuration to
+ enable some features that are disabled by default.
+ To do this, you need to uncomment some lines in cells-gtk/cells-gtk.asd
+ and gtk-ffi/gtk-ffi.asd.
+ For example, to be able to add widgets in the built-in dialogs you need
+ to uncomment the line
+\layout LyX-Code
+
+(pushnew :libcellsgtk *features*)
+\layout Standard
+
+from gtk-ffi/gtk-ffi.asd.
+ If during the installation your compiler complains about not being able
+ to load libcellsgtk, go in the directory gtk-ffi and type 'make' to recompile
+ libcellsgtk (to do so you must have installed gcc and the gtk+ headers).
+ To work with threads
+\begin_inset Foot
+collapsed false
+
+\layout Standard
+
+You also need to use (start-win <model> :terminate-on-close t)) instead
+ of (start-app <model>).
+\end_inset 
+
+, you need to uncomment the line
+\layout LyX-Code
+
+(pushnew :cells-gtk-threads *features*)
+\layout Standard
+
+from cells-gtk/cells-gtk.asd.
+\layout Section
+
+A first application
+\layout Standard
+
+The following creates a window with a button labeled 
+\begin_inset Quotes eld
+\end_inset 
+
+Hello, World!
+\begin_inset Quotes erd
+\end_inset 
+
+:
+\layout LyX-Code
+
+(defmodel my-app (gtk-app)
+\layout LyX-Code
+
+  ()
+\layout LyX-Code
+
+  (:default-initargs
+\layout LyX-Code
+
+      :md-name :app
+\layout LyX-Code
+
+    :height 200
+\layout LyX-Code
+
+    :width 300
+\layout LyX-Code
+
+    :kids
+\layout LyX-Code
+
+    (kids-list?
+\layout LyX-Code
+
+     (mk-button :expand t :fill t :label "Hello, World!")))) 
+\layout LyX-Code
+
+\layout LyX-Code
+
+\layout LyX-Code
+
 \the_end
